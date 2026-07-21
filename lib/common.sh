@@ -3,6 +3,7 @@
 # and (via the dispatcher's subshell) every module.
 
 # ---- colors / logging -------------------------------------------------------
+# shellcheck disable=SC2034  # colors are consumed by the scripts that source this file
 if [ -t 1 ]; then
     C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_RED=$'\033[31m'
     C_BLUE=$'\033[34m'; C_OFF=$'\033[0m'

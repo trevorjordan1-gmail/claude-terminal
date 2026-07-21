@@ -14,6 +14,7 @@
 # hostnames, printer names, project names, etc. — fine for personal
 # comparison, but review before sharing publicly.
 
+# shellcheck disable=SC2088  # tildes below appear inside display labels, not paths
 set -u
 VERSION="1.0.0"
 

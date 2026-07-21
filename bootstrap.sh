@@ -103,7 +103,11 @@ run_module() {
     status=""; reason=""
     IFS=$'\t' read -r status reason < "$CT_STATUS" || true
     if [ -z "$status" ]; then
-        [ "$rc" -eq 0 ] && status="OK" || { status="FAIL"; reason="exited $rc without reporting"; }
+        if [ "$rc" -eq 0 ]; then
+            status="OK"
+        else
+            status="FAIL"; reason="exited $rc without reporting"
+        fi
     fi
     RESULTS+=("${name}|${status}|${reason}")
 }
