@@ -18,6 +18,13 @@ On a fresh Ubuntu 24.04 Desktop box (regular user with sudo):
 curl -fsSL https://raw.githubusercontent.com/trevorjordan1-gmail/claude-terminal/main/get.sh | bash
 ```
 
+Short version (a [da.gd](https://da.gd) redirect to the exact URL above —
+verify with `curl -sI https://da.gd/claudeterm`):
+
+```bash
+curl -fsSL https://da.gd/claudeterm | bash
+```
+
 or, if you prefer to look first:
 
 ```bash
