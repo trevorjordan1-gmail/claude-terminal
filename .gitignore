@@ -1,0 +1,8 @@
+# Audit output snapshots — contain hostnames, SSH aliases, project names.
+# Never commit these.
+os-audit*/
+*.tar.gz
+
+# Editor / OS noise
+*.swp
+.DS_Store
