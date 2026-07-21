@@ -12,9 +12,10 @@ alias cc='claude --dangerously-skip-permissions'
 alias phonecc='tmux new-session -A -s claude claude --dangerously-skip-permissions'
 EOF
 
+# (No next_step here when logged out — the dispatcher already queues the
+# login reminder, and two differently-worded copies survive the dedup.)
 if claude_ready; then
     ok "$(claude --version 2>/dev/null | head -1)"
 else
-    next_step "Run 'claude' once to log in (needed before the claude-mem/superpowers plugin modules can finish)."
     ok "installed; not logged in yet"
 fi
