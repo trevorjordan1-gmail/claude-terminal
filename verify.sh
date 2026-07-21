@@ -76,6 +76,12 @@ else
     s "gsettings unavailable (no GUI session bus) — GNOME checks skipped"
 fi
 
+if grep -qE '^WaylandEnable=false' /etc/gdm3/custom.conf 2>/dev/null; then
+    p "Wayland disabled at GDM (X11 forced)"
+else
+    f "WaylandEnable=false not set in /etc/gdm3/custom.conf (RustDesk/Splashtop need X11)"
+fi
+
 if [ "$(systemd-detect-virt 2>/dev/null)" = "microsoft" ]; then
     if [ -f /etc/X11/xorg.conf.d/99-libinput-no-hires-scroll.conf ]; then
         p "hi-res scroll fix present"

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-21 (fix)
+
+- New core module 38-x11-session: sets `WaylandEnable=false` in
+  `/etc/gdm3/custom.conf` (takes effect at next login/reboot). RustDesk and
+  Splashtop cannot capture or inject input on Wayland, and the Hyper-V scroll
+  fix is an Xorg InputClass — both reference machines already ran X11-only.
+  This was in the machine audit's shared core but was missed in the first
+  release. `verify.sh` now checks it.
+
 All notable system-setup changes tracked by this repo. Machines converge by
 re-running `./bootstrap.sh` (it is idempotent).
 
