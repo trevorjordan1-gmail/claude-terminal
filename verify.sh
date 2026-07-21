@@ -26,6 +26,8 @@ for pkg in git gh tmux curl jq unzip lynx xvfb openssh-server; do
     if pkg_installed "$pkg"; then p "apt: $pkg"; else f "apt: $pkg missing"; fi
 done
 
+if [ -d "$HOME/Projects" ]; then p "~/Projects exists"; else f "~/Projects missing"; fi
+
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:$PATH"
 
 if have node && [ "$(node -v | sed 's/^v//; s/\..*//')" = "20" ]; then

@@ -1,7 +1,8 @@
 # Changelog
 
-## 2026-07-21 (fix)
+## 2026-07-21 (updates)
 
+- New core module 02-home-dirs: creates the `~/Projects` workspace folder.
 - New core module 38-x11-session: sets `WaylandEnable=false` in
   `/etc/gdm3/custom.conf` (takes effect at next login/reboot). RustDesk and
   Splashtop cannot capture or inject input on Wayland, and the Hyper-V scroll

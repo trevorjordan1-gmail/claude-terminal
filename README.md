@@ -49,6 +49,7 @@ is always safe and is also how you pick up updates (`git pull && ./bootstrap.sh`
 | Module | Purpose |
 |---|---|
 | 00-base-cli | git, gh, tmux, curl, jq, unzip, lynx, xvfb, openssh-server |
+| 02-home-dirs | creates the `~/Projects` workspace folder |
 | 05-node | Node.js 20 (NodeSource) + user-owned npm prefix `~/.npm-global` |
 | 10-claude-code | Claude Code native install + `cc` / `phonecc` aliases |
 | 15-bun | Bun runtime (claude-mem v10's worker needs it) |
