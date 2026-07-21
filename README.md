@@ -55,7 +55,8 @@ is always safe and is also how you pick up updates (`git pull && ./bootstrap.sh`
 | 20-claude-mem | [claude-mem](https://github.com/thedotmack/claude-mem) persistent memory, v10 plugin |
 | 25-superpowers | [superpowers](https://github.com/obra/superpowers) skills plugin |
 | 30-uv | uv/uvx (Chroma MCP server runs through it) |
-| 40-gnome-qol | screen lock off, idle blanking off |
+| 40-gnome-qol | screen lock off, idle blanking off; dock = Firefox, Files, Terminal (App Center and Help unpinned) |
+| 42-terminal-prefs | seeds GNOME Terminal prefs (Ctrl+C/V copy-paste, 200×50 window) on fresh boxes — never overwrites later tweaks |
 | 45-hyperv-qol | fixes over-fast wheel scrolling on Hyper-V/remote mice; adds user to `video` group (only runs on Hyper-V) |
 | 50-okular-md | double-clicking a `.md` file opens it rendered (Okular) |
 
