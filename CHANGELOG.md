@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-22
+
+- docs/DEVELOPMENT.md: maintainer guide — module contract, add-a-feature
+  checklist, hard rules, roadmap. verify.sh gained claude-mem runtime checks
+  the day before; both close out the v1 validation cycle.
+
 ## 2026-07-21 (updates)
 
 - New core module 02-home-dirs: creates the `~/Projects` workspace folder.

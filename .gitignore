@@ -3,6 +3,9 @@
 os-audit*/
 *.tar.gz
 
+# Maintainer's local agent context — references private infrastructure.
+CLAUDE.md
+
 # Editor / OS noise
 *.swp
 .DS_Store
