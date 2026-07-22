@@ -63,6 +63,23 @@ else
     s "superpowers plugin not installed yet (needs claude login + re-run bootstrap)"
 fi
 
+# claude-mem runtime artifacts only exist after the first claude session
+# post-install, so absence right after bootstrap is expected (SKIP, not FAIL).
+if [ -d "$HOME/.claude-mem" ]; then
+    if [ -f "$HOME/.claude-mem/claude-mem.db" ]; then
+        p "claude-mem database present"
+    else
+        s "claude-mem db not created yet (appears after first claude session)"
+    fi
+    if [ -f "$HOME/.claude-mem/supervisor.json" ] || [ -f "$HOME/.claude-mem/worker.pid" ]; then
+        p "claude-mem worker state present"
+    else
+        s "claude-mem worker not started yet (starts with first session)"
+    fi
+else
+    s "~/.claude-mem not present yet (created on first claude session after install)"
+fi
+
 if have gsettings && ensure_user_dbus; then
     if [ "$(gsettings get org.gnome.desktop.screensaver lock-enabled 2>/dev/null)" = "false" ]; then
         p "screen lock disabled"
