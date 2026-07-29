@@ -29,7 +29,8 @@ Ubuntu); slot 01 simply runs it as early as possible.
 3. Target: `/etc/sudoers.d/010-<user>-nopasswd`, with dots in the username
    replaced by underscores in the *filename only* (sudo silently ignores
    sudoers.d files whose names contain a `.`).
-4. Flow: write the rule to a temp file → `sudo cmp -s` against the target;
+4. Flow: write the rule to a temp file (guarded — a failed write aborts the
+   module before anything else happens) → `sudo cmp -s` against the target;
    identical → `ok "already configured"`. Otherwise `visudo -cf` the temp
    file; invalid → `fail` without touching the system. Valid →
    `sudo install -o root -g root -m 0440` into place → `ok`.
@@ -44,10 +45,13 @@ remains the retry path.
 
 ## verify.sh
 
-New core check: PASS when the expected sudoers.d file exists, FAIL when
-missing. Existence only — `test -f` works unprivileged (the directory is
-world-readable even though the file is not), and content was
-visudo-validated at install. verify stays read-only and sudo-free.
+New core check: PASS when the expected sudoers.d file exists and is
+non-empty, FAIL otherwise. `test -s` only stats the file, so it works
+unprivileged (the directory is world-readable even though the file is
+not); content was visudo-validated at install, and the non-empty guard
+catches a truncated file from any origin — an empty file parses clean
+through visudo, so bare existence would miss that state. verify stays
+read-only and sudo-free.
 
 ## Docs
 

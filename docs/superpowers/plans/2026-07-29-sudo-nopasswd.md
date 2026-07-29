@@ -33,7 +33,7 @@ rule="$user ALL=(ALL) NOPASSWD:ALL"
 target="/etc/sudoers.d/010-${user//./_}-nopasswd"
 
 tmp="$CT_TMP/sudoers-nopasswd"
-printf '%s\n' "$rule" > "$tmp"
+printf '%s\n' "$rule" > "$tmp" || fail "could not write $tmp"
 
 if sudo cmp -s "$tmp" "$target" 2>/dev/null; then
     ok "already configured ($target)"
@@ -98,10 +98,10 @@ with (new check first — verify order mirrors module run order, and 01-sudo-nop
 
 ```bash
 sudoers_rule="/etc/sudoers.d/010-$(id -un | tr '.' '_')-nopasswd"
-if [ -f "$sudoers_rule" ]; then
+if [ -s "$sudoers_rule" ]; then
     p "passwordless sudo rule present"
 else
-    f "passwordless sudo rule missing ($sudoers_rule)"
+    f "passwordless sudo rule missing or empty ($sudoers_rule)"
 fi
 
 if [ -d "$HOME/Projects" ]; then p "~/Projects exists"; else f "~/Projects missing"; fi
@@ -109,7 +109,7 @@ if [ -d "$HOME/Projects" ]; then p "~/Projects exists"; else f "~/Projects missi
 
 Notes for the implementer:
 - `tr '.' '_'` must produce the same name as the module's `${user//./_}` — if you change one, change both.
-- Existence-only, no sudo: `/etc/sudoers.d` is 0755 so unprivileged `test -f` works, and content was visudo-validated at install time. verify.sh stays read-only and sudo-free.
+- Non-empty existence, no sudo: `/etc/sudoers.d` is 0755 and `test -s` only stats, so it works unprivileged even though the file itself is 0440 root-only; content was visudo-validated at install time, and `-s` additionally catches a truncated/empty file from any origin (an empty file parses clean through visudo, so existence alone would miss it). verify.sh stays read-only and sudo-free.
 - Do not name the variable `f` — that's verify.sh's FAIL-printer function.
 
 - [ ] **Step 2: Syntax check**
@@ -120,7 +120,7 @@ Expected: no output, exit 0.
 - [ ] **Step 3: See the check run**
 
 Run: `./verify.sh | grep 'passwordless sudo'`
-Expected: exactly one line — `PASS  passwordless sudo rule present` if the dev machine happens to carry the rule, otherwise `FAIL  passwordless sudo rule missing (/etc/sudoers.d/010-<user>-nopasswd)`. Either proves the check executes; a FAIL here is correct behavior on a box that never ran bootstrap (ignore the rest of the report for the same reason).
+Expected: exactly one line — `PASS  passwordless sudo rule present` if the dev machine happens to carry the rule, otherwise `FAIL  passwordless sudo rule missing or empty (/etc/sudoers.d/010-<user>-nopasswd)`. Either proves the check executes; a FAIL here is correct behavior on a box that never ran bootstrap (ignore the rest of the report for the same reason).
 
 ### Task 3: README
 
