@@ -33,6 +33,7 @@ else
     f "passwordless sudo rule missing or empty ($sudoers_rule)"
 fi
 
+# shellcheck disable=SC2088  # tilde is display text; the test itself uses $HOME
 if [ -d "$HOME/Projects" ]; then p "~/Projects exists"; else f "~/Projects missing"; fi
 
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:$PATH"
@@ -84,6 +85,7 @@ if [ -d "$HOME/.claude-mem" ]; then
         s "claude-mem worker not started yet (starts with first session)"
     fi
 else
+    # shellcheck disable=SC2088  # tilde is display text
     s "~/.claude-mem not present yet (created on first claude session after install)"
 fi
 
