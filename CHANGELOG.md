@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-29
+
+- New core module 01-sudo-nopasswd: passwordless sudo for the invoking user
+  via a visudo-validated drop-in in `/etc/sudoers.d` (mode 0440; nothing is
+  installed unless it parses). A box's first bootstrap run prompts for the
+  password once; sudo never prompts again — password prompts were stalling
+  Claude sessions on a field box. `verify.sh` checks for the rule.
+
 ## 2026-07-22
 
 - docs/DEVELOPMENT.md: maintainer guide — module contract, add-a-feature

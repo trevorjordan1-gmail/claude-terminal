@@ -26,6 +26,13 @@ for pkg in git gh tmux curl jq unzip lynx xvfb openssh-server; do
     if pkg_installed "$pkg"; then p "apt: $pkg"; else f "apt: $pkg missing"; fi
 done
 
+sudoers_rule="/etc/sudoers.d/010-$(id -un | tr '.' '_')-nopasswd"
+if [ -s "$sudoers_rule" ]; then
+    p "passwordless sudo rule present"
+else
+    f "passwordless sudo rule missing or empty ($sudoers_rule)"
+fi
+
 if [ -d "$HOME/Projects" ]; then p "~/Projects exists"; else f "~/Projects missing"; fi
 
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:$PATH"

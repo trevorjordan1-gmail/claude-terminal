@@ -49,6 +49,7 @@ is always safe and is also how you pick up updates (`git pull && ./bootstrap.sh`
 | Module | Purpose |
 |---|---|
 | 00-base-cli | git, gh, tmux, curl, jq, unzip, lynx, xvfb, openssh-server |
+| 01-sudo-nopasswd | passwordless sudo for the installing user — password asked once at first setup, never again |
 | 02-home-dirs | creates the `~/Projects` workspace folder |
 | 05-node | Node.js 20 (NodeSource) + user-owned npm prefix `~/.npm-global` |
 | 10-claude-code | Claude Code native install + `cc` / `phonecc` aliases |
@@ -69,6 +70,11 @@ The aliases the core adds (they're the point of the box — remove them from
 alias cc='claude --dangerously-skip-permissions'
 alias phonecc='tmux new-session -A -s claude claude --dangerously-skip-permissions'
 ```
+
+In the same spirit, the core sets up **passwordless sudo** for the installing
+user (`01-sudo-nopasswd`): the first bootstrap run asks for your password
+once, and sudo never asks again. Deliberate posture for a
+single-user lab VM — if you fork this and don't want it, delete that module.
 
 ## Extras
 
