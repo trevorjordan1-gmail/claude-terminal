@@ -182,7 +182,14 @@ Run:
 docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -x $(git ls-files '*.sh')
 ```
 
-Expected: no output, exit 0. If it flags something in the new module, fix the code (scoped `# shellcheck disable=` with a reason comment only if genuinely justified — see existing scoped disables for the pattern).
+Expected: no findings from the new module (confirmed: file-scoped run exits 0).
+Field result 2026-07-29 (shellcheck stable = 0.11.0): four pre-existing SC2088
+warnings surfaced repo-wide — `modules/core/02-home-dirs.sh:5` plus the
+`~/Projects` and `~/.claude-mem` message strings in `verify.sh` (tilde is
+display text there; the tests themselves already use `$HOME`). Handling:
+scoped `# shellcheck disable=SC2088` lines with reason comments, landed in a
+dedicated chore commit AFTER the feature commit so the feature diff stays
+pure (house precedent: 52d01e0).
 
 - [ ] **Step 3: smoke --list and --help**
 
@@ -206,6 +213,11 @@ git commit -m "feat: core module 01-sudo-nopasswd — passwordless sudo for the 
 ```
 
 (Session trailers appended per the operator's global git rules; author must be the repo's configured identity — sanity-check with `git config user.email` first.)
+
+After the feature commit, land the lint-debt chore commit (the scoped SC2088
+disables from Task 5's field result) and re-run the repo-wide shellcheck gate
+(expected clean, exit 0), then run the final whole-implementation review over
+both commits before pushing.
 
 - [ ] **Step 3: Push (deployment — fleet boxes converge via git pull)**
 
