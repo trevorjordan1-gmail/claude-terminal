@@ -142,7 +142,7 @@ Immediately after the aliases code block (the one ending `alias phonecc=...`, be
 ```markdown
 In the same spirit, the core sets up **passwordless sudo** for the installing
 user (`01-sudo-nopasswd`): the first bootstrap run asks for your password
-once, and nothing on the box ever asks again. Deliberate posture for a
+once, and sudo never asks again. Deliberate posture for a
 single-user lab VM — if you fork this and don't want it, delete that module.
 ```
 
@@ -161,7 +161,7 @@ Directly under the `# Changelog` heading, before the `## 2026-07-22` section, in
 - New core module 01-sudo-nopasswd: passwordless sudo for the invoking user
   via a visudo-validated drop-in in /etc/sudoers.d (mode 0440; nothing is
   installed unless it parses). A box's first bootstrap run prompts for the
-  password once; after that nothing ever asks — sudo prompts were stalling
+  password once; sudo never prompts again — password prompts were stalling
   Claude sessions on a field box. `verify.sh` checks for the rule.
 ```
 
