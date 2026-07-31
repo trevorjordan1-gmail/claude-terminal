@@ -12,7 +12,9 @@ they agreed on became the default **core**, the rest became opt-in
 
 ## Quick start
 
-On a fresh Ubuntu 24.04 Desktop box (regular user with sudo):
+On a fresh Ubuntu 24.04 Desktop box (regular user with sudo) — if you still
+need to *build* that box on a Hyper-V host, see
+[Provisioning the VM](#provisioning-the-vm-hyper-v-hosts) below first:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/trevorjordan1-gmail/claude-terminal/main/get.sh | bash
@@ -43,6 +45,36 @@ Then:
 Extras are flags: `./bootstrap.sh --with-docker --with-xrdp --with-tailscale`
 (see `--list` for everything). The whole thing is **idempotent** — re-running
 is always safe and is also how you pick up updates (`git pull && ./bootstrap.sh`).
+
+## Provisioning the VM (Hyper-V hosts)
+
+The step before everything above: building the Ubuntu VM itself. From an
+**elevated PowerShell on the Hyper-V host** (not in the guest):
+
+```powershell
+irm https://raw.githubusercontent.com/trevorjordan1-gmail/claude-terminal/main/windows/get.ps1 | iex
+```
+
+That fetches `windows/New-UbuntuHyperVVM.ps1` and runs it. The script stages
+the newest Ubuntu 24.04 Desktop ISO in `C:\VMs\ISOs` — downloading it only if
+a newer point release has shipped, and verifying it against Canonical's
+published `SHA256SUMS` — then prompts for name, memory, CPUs, and disk, lets
+you pick the ISO and virtual switch, and builds a Generation 2 VM with a
+dynamic VHDX and static memory. Boot it, install Ubuntu, then run the
+quick-start one-liner inside the guest.
+
+To pass the script's switches (`-VMRoot`, `-SkipIsoUpdate`, `-SkipHashCheck`),
+bind them to the launcher instead of piping — `iex` cannot forward arguments:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/trevorjordan1-gmail/claude-terminal/main/windows/get.ps1))) -SkipIsoUpdate
+```
+
+The launcher downloads to `$env:TEMP` and invokes the script as a file rather
+than running it inline, which is what keeps its `#Requires -RunAsAdministrator`
+guard working and keeps a mistyped menu answer from closing your console. It
+also enables TLS 1.2 and sets a **process-scoped** execution policy bypass —
+nothing persists past that console window.
 
 ## What the core installs
 

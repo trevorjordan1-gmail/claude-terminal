@@ -23,9 +23,16 @@ file-by-file audit of two long-lived production machines (see
 | `modules/extra/<flag>.sh` | run when `--with-<flag>` given |
 | `assets/` | data files modules load (e.g. `gnome-terminal.dconf`) |
 | `tools/` | standalone user-facing helpers (`add-printer.sh`) |
+| `windows/get.ps1` | Windows counterpart of `get.sh`: `irm … \| iex` on a Hyper-V host |
+| `windows/New-UbuntuHyperVVM.ps1` | interactive Gen-2 Ubuntu VM builder (host-side) |
 | `verify.sh` | read-only PASS/FAIL/SKIP state check |
 | `audit/system-audit.sh` | full machine snapshot for diffing two boxes |
 | `docs/superpowers/` | original design spec + implementation plan (historical) |
+
+`windows/` is the one part of the repo that doesn't run on the target box — it
+runs on the Windows Hyper-V host that *builds* the box. It's standalone
+tooling in the spirit of `tools/`, outside `bootstrap.sh` dispatch, so the
+module contract below does not apply to it.
 
 ## Module contract
 
@@ -74,7 +81,10 @@ exactly like their flag.
 5. Lint: `bash -n` every touched script, then
    `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -x $(git ls-files '*.sh')`
    — keep it finding-free (scoped `# shellcheck disable=` with a reason
-   comment when justified).
+   comment when justified). For anything under `windows/`, the equivalent
+   check is a PowerShell parse (there's no PowerShell on the dev box):
+   `docker run --rm -v "$PWD:/repo:ro" mcr.microsoft.com/powershell:latest pwsh -NoProfile -Command "…Parser]::ParseFile(…)"`
+   — see the 2026-07-31 plan for the full command.
 6. Smoke: `./bootstrap.sh --list` and `--help`.
 7. Commit, push. Machines pick it up with
    `git -C ~/claude-terminal pull && ~/claude-terminal/bootstrap.sh`.

@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-07-31
+
+- New `windows/` directory: host-side Hyper-V tooling, covering the one step
+  that was still manual in front of `get.sh` — building the Ubuntu VM.
+  `New-UbuntuHyperVVM.ps1` stages the newest Ubuntu 24.04 Desktop ISO
+  (SHA256-verified against Canonical's published sums, re-downloaded only on a
+  new point release) and builds a Generation 2 VM interactively.
+  `windows/get.ps1` is the Windows counterpart of `get.sh`:
+  `irm …/windows/get.ps1 | iex` from an elevated PowerShell.
+  The launcher exists because PowerShell treats piped content differently from
+  a script file — `#Requires` is ignored, `exit` closes the console instead of
+  ending the script, and parameters cannot bind. It downloads the script and
+  invokes it as a file, so all three behave. `windows/` sits outside module
+  dispatch; the module contract does not apply to it.
+
 ## 2026-07-29
 
 - New core module 01-sudo-nopasswd: passwordless sudo for the invoking user
