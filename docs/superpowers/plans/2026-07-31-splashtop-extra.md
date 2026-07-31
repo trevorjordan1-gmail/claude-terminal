@@ -82,15 +82,31 @@ Document `ct-suggest:` in contract item 1. Amend hard rule 7 with the prompt exc
 
 - [x] **Step 2: Single feature commit, then push**
 
-- [ ] **Step 3: Validate on a real box**
+- [x] **Step 3: Validate on a real box — happy path CONFIRMED 2026-07-31**
 
-Not yet done. On a box without Splashtop:
+First real run, on a fresh Ubuntu 24.04 Hyper-V VM bootstrapped the day before:
+the deployment-code prompt appeared, the code was accepted, and the maintainer
+connected to the machine through Splashtop. Install → prompt → deploy →
+reachable all work.
 
-1. `./bootstrap.sh` (core only) — the summary should end with the `--with-splashtop` reminder.
-2. `./bootstrap.sh --with-splashtop` — should prompt for the code, install, register, and report `OK splashtop installed and registered`.
-3. Confirm the machine appears in the Splashtop console.
-4. `./verify.sh` — expect `PASS splashtop streamer active`.
-5. Re-run `./bootstrap.sh --with-splashtop` — must print `OK splashtop already installed` **without prompting**. This is the idempotency guarantee that keeps re-runs unattended.
-6. Confirm the reminder no longer appears on a plain `./bootstrap.sh` run.
+One wrinkle worth keeping: the box had been bootstrapped *before* this module
+shipped, so the first `./bootstrap.sh --with-splashtop` ran the old stub and
+printed manual instructions. `git pull` first (or use the curl entrypoint,
+which pulls for you). Expect this on any box bootstrapped before a feature
+lands — see the note in `CLAUDE.md`.
 
-Also worth one pass through the `curl … | bash -s -- --with-splashtop` form, since that's the path where the `/dev/tty` handling actually matters.
+- [ ] **Step 4: Finish validating the remaining guarantees**
+
+Still unconfirmed on real hardware:
+
+1. **Idempotency (most important).** Re-run `./bootstrap.sh --with-splashtop`
+   on the same box — it must print `OK splashtop already installed` **without
+   prompting**. If it prompts, unattended re-runs are broken and
+   `git pull && ./bootstrap.sh` is no longer safe to automate.
+2. `./verify.sh` — expect `PASS splashtop streamer active`.
+3. On a box *without* Splashtop, a plain `./bootstrap.sh` should end with the
+   `--with-splashtop` reminder; on one that has it, the reminder must be gone.
+4. **The piped form**, `curl … | bash -s -- --with-splashtop`. The confirmed
+   run used a local `./bootstrap.sh`, where stdin is already the terminal — so
+   it did *not* exercise the `/dev/tty` handling. That path is the reason the
+   `/dev/tty` code exists and is still unproven in the field.
