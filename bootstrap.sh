@@ -136,6 +136,23 @@ if ! claude_ready; then
     next_step "Run 'claude' once to log in to Claude Code, then re-run ./bootstrap.sh so the plugin modules (claude-mem, superpowers) can finish."
 fi
 
+# Advertise opt-in extras that didn't run and aren't already on the box. A module
+# opts in with "# ct-suggest: <command>|<hint>"; <command> is what proves it's
+# already installed. Adding another (rustdesk, say) is a module file only —
+# nothing here changes.
+for f in "$SCRIPT_DIR"/modules/extra/*.sh; do
+    suggest="$(sed -n 's/^# ct-suggest: //p' "$f" | head -1)"
+    [ -n "$suggest" ] || continue
+    probe="${suggest%%|*}"
+    hint="${suggest#*|}"
+    [ "$probe" = "$suggest" ] && probe=""   # no '|' present: always suggest
+    if [ -n "$probe" ] && have "$probe"; then continue; fi
+    name="$(basename "$f" .sh)"
+    ran=0
+    for x in ${EXTRAS[@]+"${EXTRAS[@]}"}; do [ "$x" = "$name" ] && ran=1; done
+    [ "$ran" = 1 ] || next_step "$hint"
+done
+
 if [ -s "$CT_NEXT" ]; then
     echo
     log "══ NEXT STEPS ═══════════════════════════"

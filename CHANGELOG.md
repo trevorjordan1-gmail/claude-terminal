@@ -14,6 +14,22 @@
   ending the script, and parameters cannot bind. It downloads the script and
   invokes it as a file, so all three behave. `windows/` sits outside module
   dispatch; the module contract does not apply to it.
+- `modules/extra/splashtop.sh` is real: `./bootstrap.sh --with-splashtop`
+  installs Splashtop Streamer, asks for your 12-digit deployment code, and
+  registers the machine, so it appears in the Splashtop console when the run
+  ends. It also enables the streamer's own auto-update, because Splashtop
+  publishes no "latest" download URL — the pinned URL only has to get the
+  package on the box once. An already-installed streamer is left alone, so
+  re-running bootstrap stays unattended.
+- Modules may now advertise themselves with `# ct-suggest: <command>|<hint>`.
+  Bootstrap prints the hint under NEXT STEPS when that extra didn't run and
+  the command isn't present, so a core-only run ends by telling you the switch
+  to add. Adding the next opt-in product (RustDesk) is a module file only.
+- `docs/DEVELOPMENT.md`: the no-prompts rule gains one narrow exception —
+  an extra requested by its own `--with-` flag may prompt for inherently
+  per-machine secrets, via `/dev/tty`, and must skip when there's no terminal.
+  Under `curl | bash` a bare `read` eats the script's next line, and `[ -t 0 ]`
+  is false even in a real console; both traps are documented.
 - README: state the `curl` prerequisite. A fresh Ubuntu 24.04 Desktop install
   doesn't include it, and since curl is what fetches `get.sh`, it's the one
   dependency the bootstrap can't resolve for itself — the documented quick

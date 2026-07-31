@@ -39,7 +39,10 @@ module contract below does not apply to it.
 Modules are **sourced inside a subshell** by `bootstrap.sh`. Rules:
 
 1. First lines: `# shellcheck shell=bash` and `# ct-desc: <one-liner>`
-   (the ct-desc line is what `--list` prints).
+   (the ct-desc line is what `--list` prints). An extra may also carry
+   `# ct-suggest: <command>|<hint>`: bootstrap prints `<hint>` under NEXT STEPS
+   when that extra didn't run *and* `<command>` isn't on PATH. That's how an
+   opt-in product advertises itself without the dispatcher knowing it exists.
 2. Terminate through exactly one of `ok "msg"` / `skip "why"` / `fail "why"`.
    These `exit` the subshell — code after them does not run. A module that
    falls off the end counts as OK.
@@ -62,7 +65,14 @@ Modules are **sourced inside a subshell** by `bootstrap.sh`. Rules:
      later (e.g. `42-terminal-prefs` loads its dconf only when the target
      tree is empty).
 7. Anything needing interaction (logins, `tailscale up`, printer addresses)
-   is a `next_step`, never a prompt — `curl | bash` has no stdin.
+   is a `next_step`, never a prompt. **One exception:** an extra the user
+   explicitly asked for by its own `--with-` flag may prompt for input that is
+   inherently per-machine and secret — a Splashtop deployment code, say. Such a
+   module must read from `/dev/tty` and must `skip` when it can't, so unattended
+   runs never block. Two traps: under `curl | bash` stdin is the *pipe*, so a
+   bare `read` silently consumes the script's own next line instead of asking;
+   and `[ -t 0 ]` is false there even in a real console, so gate on
+   `( : </dev/tty ) 2>/dev/null` instead. Core modules get no exception.
 
 Numbering: core runs in lexical order — pick a number that respects
 dependencies (base-cli → runtimes → claude stack → desktop). Extras are named
@@ -103,10 +113,9 @@ exactly like their flag.
 
 ## Roadmap / candidate work
 
-- **Splashtop automation** (`modules/extra/splashtop.sh` is a
-  manual-instructions stub today; maintainer wants it automated —
-  the .deb download is version-pinned on their site, needs a stable fetch
-  strategy).
+- **RustDesk extra** — some sites use RustDesk instead of Splashtop. It should
+  land as `modules/extra/rustdesk.sh` with its own `ct-suggest:` line; the
+  dispatcher needs no changes. Follow `splashtop.sh` for the shape.
 - MFA extra (`libpam-google-authenticator` + `oathtool`) — present on one
   reference machine, not yet a module.
 - Possible split of `buildtools` (compiler toolchain vs Windows-installer

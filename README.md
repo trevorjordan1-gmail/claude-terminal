@@ -132,7 +132,7 @@ single-user lab VM — if you fork this and don't want it, delete that module.
 | `--with-buildtools` | build-essential, maven, JDK, msitools/wixl, osslsigncode, mdbtools |
 | `--with-usagemeter` | Claude subscription usage meter (tray icon + `localhost:7777`) |
 | `--with-weak-passwords` | lab-VM password policy (anything goes). Deliberately **not** in `--all-extras` |
-| `--with-splashtop` | prints manual install steps (see below) |
+| `--with-splashtop` | Splashtop Streamer for remote access — asks for your deployment code |
 
 `--all-extras` = every extra except `weak-passwords` and `splashtop`.
 
@@ -149,13 +149,16 @@ names over time, orphaning the old ones — jobs silently die. The
 Any modern printer speaks IPP Everywhere (driverless). Find its hostname/IP
 on the printer's network config page.
 
-## Splashtop (manual for now)
+## Splashtop (optional)
 
-Automation is planned; today it's three steps:
+Remote access. Install it and register the machine in one step:
 
-1. Download the Ubuntu 64-bit Streamer .deb: <https://www.splashtop.com/downloads#streamer>
-2. `sudo apt-get install -y ./Splashtop_Streamer_Ubuntu_*.deb`
-3. Launch **Splashtop Streamer**, log in, allow autostart.
+```bash
+./bootstrap.sh --with-splashtop
+```
+
+Type your 12-digit deployment code when it asks. The machine then shows up in
+your Splashtop console.
 
 ## Verifying and auditing
 

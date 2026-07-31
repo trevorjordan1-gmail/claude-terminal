@@ -138,6 +138,13 @@ fi
 if have tailscale; then
     if systemctl is-active tailscaled >/dev/null 2>&1; then p "tailscaled active"; else f "tailscale installed but daemon inactive"; fi
 fi
+if pkg_installed splashtop-streamer; then
+    if systemctl is-active SRStreamer.service >/dev/null 2>&1; then
+        p "splashtop streamer active"
+    else
+        f "splashtop installed but SRStreamer.service inactive"
+    fi
+fi
 if pkg_installed cups-browsed && systemctl is-enabled cups-browsed >/dev/null 2>&1; then
     s "cups-browsed still enabled (run --with-printing-direct to disable auto-queues)"
 fi
