@@ -14,7 +14,19 @@ they agreed on became the default **core**, the rest became opt-in
 
 On a fresh Ubuntu 24.04 Desktop box (regular user with sudo) — if you still
 need to *build* that box on a Hyper-V host, see
-[Provisioning the VM](#provisioning-the-vm-hyper-v-hosts) below first:
+[Provisioning the VM](#provisioning-the-vm-hyper-v-hosts) below first.
+
+**Install `curl` first.** A fresh Ubuntu 24.04 Desktop install doesn't have
+it, and it's what fetches the one-liner — so it's the one thing the bootstrap
+can't install for you. Bring the box up to date at the same time:
+
+```bash
+sudo apt-get update
+sudo apt-get upgrade
+sudo apt install -y curl
+```
+
+Then:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/trevorjordan1-gmail/claude-terminal/main/get.sh | bash
@@ -27,7 +39,8 @@ Short version — an HTTPS 301 to the exact URL above (verify any time with
 curl -fsSL https://get.wtfapps.net | bash
 ```
 
-or, if you prefer to look first:
+or, if you prefer to look first (this route needs `git` rather than curl —
+`sudo apt install -y git`; the one-liners above install it for you):
 
 ```bash
 git clone https://github.com/trevorjordan1-gmail/claude-terminal ~/claude-terminal

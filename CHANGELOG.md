@@ -14,6 +14,11 @@
   ending the script, and parameters cannot bind. It downloads the script and
   invokes it as a file, so all three behave. `windows/` sits outside module
   dispatch; the module contract does not apply to it.
+- README: state the `curl` prerequisite. A fresh Ubuntu 24.04 Desktop install
+  doesn't include it, and since curl is what fetches `get.sh`, it's the one
+  dependency the bootstrap can't resolve for itself — the documented quick
+  start simply failed on a clean box. Also notes that the `git clone` route
+  needs `git`, which `get.sh` installs but a manual clone does not.
 
 ## 2026-07-29
 
