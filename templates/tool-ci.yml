@@ -1,0 +1,57 @@
+# TEMPLATE — NEW-APP copies this to <app-repo>/.github/workflows/ci.yml and fills the
+# test step. CI is the RECORD: every push is tested, built, Trivy-scanned, and (on main)
+# published to GHCR tagged latest + <sha>. A green check gates every deploy — Claude
+# watches the run after pushing and never deploys around a red one.
+# Deploying happens separately, Claude-driven from the terminal (compose pull && up -d);
+# GitHub has no path into the droplet.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # TODO(NEW-APP): the app's real test command, e.g.
+      #   - run: npm ci && npm test
+      #   - run: pip install -r requirements.lock.txt && pytest
+      - run: echo "TODO: add tests"
+
+  build-scan-push:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image name (GHCR requires lowercase)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Build image (load locally for scanning)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Trivy scan (fail on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+
+      - name: Push to GHCR (main only)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker tag "$IMAGE:${{ github.sha }}" "$IMAGE:latest"
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
