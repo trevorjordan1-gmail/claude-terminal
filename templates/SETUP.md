@@ -7,7 +7,9 @@ you need is in the staged file — do not ask for keys or the client code.
 
 ## Preconditions (verify, don't assume)
 
-1. `~/claude-terminal/` exists (bootstrap ran; re-running it is how updates land).
+1. `~/claude-terminal/` exists AND is current: run `cd ~/claude-terminal && git pull --ff-only`
+   FIRST — the bootstrap clone does not auto-update, and a box built before a templates
+   change won't have it. If this very file was missing until the pull, that was why.
 2. **`~/Projects/.env` exists** — the engineer's scratch template, staged here because the
    permanent home doesn't exist yet. It carries `CLIENT_CODE`, `CLIENT_DOMAIN`, and every
    vendor key (DO / Cloudflare / GitHub / Wasabi / Healthchecks / restic). If it's missing,
