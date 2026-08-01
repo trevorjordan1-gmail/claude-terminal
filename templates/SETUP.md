@@ -65,6 +65,26 @@ Then, in order:
    build), commit, push, then run `scripts/workspace-status.sh` — it must come back clean.
    Report to the engineer in plain language: what was built, what was verified, what's next.
 
+## Additional terminals — join mode (auto-detected)
+
+**If the platform repo `<GITHUB_ORG>/<CLIENT_DOMAIN>` already exists on GitHub, this is an
+additional terminal (cct02+), not a fresh engagement.** Same preconditions (this terminal's
+OWN pack: fresh per-machine tokens + the shared values), same zero questions — but the run
+changes shape:
+
+- **Clone, don't create:** `git clone` the platform repo into `~/Projects/<CLIENT_DOMAIN>/`
+  (machine-token helper inline) — the live CLAUDE.md house rules and STATE.md arrive intact.
+  Do NOT restamp CLAUDE.md/STATE.md over them; only sync `scripts/` from templates if newer.
+- Launcher, `os-changes/`, `misc/`, the `.env` move, the local git author (THIS terminal's
+  builder) and credential helper: all exactly as above.
+- **Arm this terminal's own backup:** nightly restic of the home directory to the client's
+  bucket (it exists once the platform build has run), one repo path for this machine,
+  `RESTIC_PASSWORD_CCT`, plus its Healthchecks check. If the platform build hasn't run yet,
+  record that in STATE.md instead — the build will arm it.
+- **Register the terminal:** STATE.md's VM↔builder map gains this machine (hostname,
+  builder, token names + expiries). Commit + push.
+- `pack-verify.sh` runs the same — it proves the NEW tokens, not the first terminal's.
+
 ## What you do NOT do here
 
 - No droplet, DNS, tunnel, or any client-cloud resource — that is `PLATFORM-BUILD.md`,
