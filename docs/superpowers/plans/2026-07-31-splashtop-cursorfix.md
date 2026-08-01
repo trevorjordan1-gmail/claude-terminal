@@ -64,7 +64,13 @@ All skipped when `splashtop-streamer` is absent, so RustDesk boxes SKIP rather t
 
 - [ ] **Step 2: Field-validate on a Splashtop box**
 
-Not yet done:
+Deferred 2026-07-31 — no new box being built for a while, so this waits for the
+next fresh VM rather than being testable now. The module arrived already
+field-proven on the machine it was written for; what's unvalidated is this
+repo's *wiring* of it (the `ct-after-extras` deferral, the verify checks, and
+the converge path), not the fix itself.
+
+Checklist when a box is available:
 
 1. `./bootstrap.sh --with-splashtop` on a fresh box — `41-splashtop-cursorfix` should run *after* `extra/splashtop` and report OK, with a NEXT STEPS logout line.
 2. Re-run — must report `OK already converged` and must **not** restart the streamer (a restart drops live sessions).
