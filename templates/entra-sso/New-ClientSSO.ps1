@@ -37,6 +37,10 @@ param(
   # Also grant the registration Application.ReadWrite.OwnedBy (app permission) so
   # automation can extend it headlessly using its own credentials. Optional.
   [switch]$IncludeOwnedBy,
+  # Sign in via device code instead of a local browser - for running on a Linux terminal
+  # (pwsh): the admin enters the printed code at microsoft.com/devicelogin from their OWN
+  # device, so admin credentials never touch the box running the script.
+  [switch]$DeviceCode,
   # Secret lifetime - adNET standard is 12 months (all client credentials rotate together).
   [int]$SecretMonths = 12
 )
@@ -47,7 +51,8 @@ $RedirectUri = "https://$TeamName.cloudflareaccess.com/cdn-cgi/access/callback"
 
 $scopes = @('Application.ReadWrite.All','Directory.Read.All',
             'DelegatedPermissionGrant.ReadWrite.All','AppRoleAssignment.ReadWrite.All')
-Connect-MgGraph -Scopes $scopes -NoWelcome
+if ($DeviceCode) { Connect-MgGraph -Scopes $scopes -UseDeviceCode -NoWelcome }
+else             { Connect-MgGraph -Scopes $scopes -NoWelcome }
 $ctx = Get-MgContext
 
 # Refuse to duplicate - one registration per client, ever.

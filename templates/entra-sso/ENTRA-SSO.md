@@ -6,10 +6,17 @@ ONE registration per client, ever.
 
 ## Step 1 — create the registration (who runs what)
 
-- **Managed tenant (adNET holds admin):** the engineer runs
-  `templates/entra-sso/New-ClientSSO.ps1` from any PowerShell with their admin sign-in —
-  `./New-ClientSSO.ps1 -ClientCode <code> -AiopsUpn aiops@<clientdomain>` — two minutes,
-  zero portal clicking. The human authenticates; the script configures.
+- **Managed tenant (adNET holds admin) — two equivalent ways:**
+  - *From the engineer's own machine:* any PowerShell,
+    `./New-ClientSSO.ps1 -ClientCode <code> -AiopsUpn aiops@<clientdomain>` — browser
+    sign-in pops locally. Two minutes.
+  - *Claude runs it ON this terminal (preferred — admin credentials never touch the box):*
+    install pwsh + the Graph module once (`sudo snap install powershell --classic`, then in
+    pwsh `Install-Module Microsoft.Graph -Scope CurrentUser`; log both in os-changes), then
+    `pwsh ./New-ClientSSO.ps1 -ClientCode <code> -AiopsUpn aiops@<clientdomain> -DeviceCode`.
+    Claude relays the printed code + URL to the engineer, who signs in from their OWN
+    device at microsoft.com/devicelogin (MFA applies). The session token lives only for the
+    run. Claude then feeds the printed values straight into the pack — no copy/paste hop.
 - **External IT holds the tenant:** generate the request one-pager from
   `ENTRA-SSO-REQUEST.template.md` (fill every placeholder from the pack), attach the
   script, send it. They run it (or click through the by-hand section). If they decline the
