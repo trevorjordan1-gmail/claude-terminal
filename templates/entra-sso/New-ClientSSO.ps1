@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
-  Creates the one-per-client "<code>-sso" Entra app registration — the single object that
+  Creates the one-per-client "<code>-sso" Entra app registration - the single object that
   serves Cloudflare Access sign-in today and any future direct-SSO app (redirect URIs and
   per-app secrets get added to this same registration; no second registration, ever).
 
 .DESCRIPTION
   Run by a Global Administrator (or Privileged Role Admin + Application Admin) of the
-  CLIENT's tenant — adNET staff for managed tenants, the client's own IT provider
+  CLIENT's tenant - adNET staff for managed tenants, the client's own IT provider
   otherwise. Everything is parameter-driven; the script prints exactly what was created
-  and the three values to hand back (tenant ID, client ID, secret — the secret displays
+  and the three values to hand back (tenant ID, client ID, secret - the secret displays
   ONCE).
 
   Requires the Microsoft Graph PowerShell SDK:  Install-Module Microsoft.Graph -Scope CurrentUser
@@ -21,23 +21,23 @@
   "cloudflare-access".
 
 .NOTES
-  ⚠ First-run status: authored 2026-08-01 from the documented Graph SDK surface; do the
+  WARNING: First-run status: authored 2026-08-01 from the documented Graph SDK surface; do the
   first execution against an adNET-controlled tenant and fix forward before sending to an
   external provider.
 #>
 param(
-  # Short client code — names the app "<code>-sso" and the Zero Trust callback host.
+  # Short client code - names the app "<code>-sso" and the Zero Trust callback host.
   [Parameter(Mandatory)] [string]$ClientCode,
   # Cloudflare Zero Trust team name if it differs from the client code.
   [string]$TeamName = $ClientCode,
   # UPN of the service account to add as OWNER of the registration (recommended:
-  # object-scoped power only — lets automation add redirect URIs/secrets later without
+  # object-scoped power only - lets automation add redirect URIs/secrets later without
   # any directory role). Omit to skip.
   [string]$AiopsUpn,
   # Also grant the registration Application.ReadWrite.OwnedBy (app permission) so
   # automation can extend it headlessly using its own credentials. Optional.
   [switch]$IncludeOwnedBy,
-  # Secret lifetime — adNET standard is 12 months (all client credentials rotate together).
+  # Secret lifetime - adNET standard is 12 months (all client credentials rotate together).
   [int]$SecretMonths = 12
 )
 $ErrorActionPreference = 'Stop'
@@ -50,9 +50,9 @@ $scopes = @('Application.ReadWrite.All','Directory.Read.All',
 Connect-MgGraph -Scopes $scopes -NoWelcome
 $ctx = Get-MgContext
 
-# Refuse to duplicate — one registration per client, ever.
+# Refuse to duplicate - one registration per client, ever.
 if (Get-MgApplication -Filter "displayName eq '$AppName'" -Top 1) {
-  throw "'$AppName' already exists in this tenant — there is only ever ONE per client. Extend it instead."
+  throw "'$AppName' already exists in this tenant - there is only ever ONE per client. Extend it instead."
 }
 
 # Resolve Microsoft Graph's service principal + permission IDs dynamically (no hardcoded GUIDs).
@@ -68,14 +68,14 @@ if ($IncludeOwnedBy) {
   $resourceAccess += @{ Id = $role.Id; Type = 'Role' }
 }
 
-# 1 · the registration — single tenant, web redirect = the Zero Trust callback
+# 1 - the registration - single tenant, web redirect = the Zero Trust callback
 $app = New-MgApplication -DisplayName $AppName -SignInAudience 'AzureADMyOrg' `
   -Web @{ RedirectUris = @($RedirectUri) } `
   -RequiredResourceAccess @(@{ ResourceAppId = $graphSp.AppId; ResourceAccess = $resourceAccess })
 $sp = New-MgServicePrincipal -AppId $app.AppId
 Write-Host "Created $AppName  (appId $($app.AppId))"
 
-# 2 · admin consent — delegated sign-in scopes for all users
+# 2 - admin consent - delegated sign-in scopes for all users
 New-MgOauth2PermissionGrant -BodyParameter @{
   clientId    = $sp.Id
   consentType = 'AllPrincipals'
@@ -90,7 +90,7 @@ if ($IncludeOwnedBy) {
   Write-Host 'Granted app permission: Application.ReadWrite.OwnedBy (self-serve extension)'
 }
 
-# 3 · owner (object-scoped control — no directory roles anywhere)
+# 3 - owner (object-scoped control - no directory roles anywhere)
 if ($AiopsUpn) {
   $aiops = Get-MgUser -UserId $AiopsUpn
   $ref = @{ '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($aiops.Id)" }
@@ -99,18 +99,18 @@ if ($AiopsUpn) {
   Write-Host "Added owner: $AiopsUpn (this object only)"
 }
 
-# 4 · first secret — labeled for its consumer, 12-month standard
+# 4 - first secret - labeled for its consumer, 12-month standard
 $secret = Add-MgApplicationPassword -ApplicationId $app.Id -PasswordCredential @{
   DisplayName = 'cloudflare-access'
   EndDateTime = (Get-Date).AddMonths($SecretMonths)
 }
 
 Write-Host ''
-Write-Host '════════ HAND THESE BACK (secret displays ONCE — read it over a call or a one-time link, never plain email) ════════'
+Write-Host '======== HAND THESE BACK (secret displays ONCE - read it over a call or a one-time link, never plain email) ========'
 Write-Host "  Tenant ID : $($ctx.TenantId)"
 Write-Host "  Client ID : $($app.AppId)"
 Write-Host "  Secret    : $($secret.SecretText)"
 Write-Host "  Expires   : $($secret.EndDateTime)  (label: cloudflare-access)"
 Write-Host ''
-Write-Host "Next (adNET side): Zero Trust → Settings → Authentication → add Microsoft Entra ID with the three values, run its Test."
+Write-Host "Next (adNET side): Zero Trust -> Settings -> Authentication -> add Microsoft Entra ID with the three values, run its Test."
 Disconnect-MgGraph | Out-Null
