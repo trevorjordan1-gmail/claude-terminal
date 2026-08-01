@@ -16,6 +16,19 @@ ARCHITECTURE.md. Default stack unless the brief demands otherwise: our standard 
 shape on the droplet, Postgres if it needs a database, the built frontend served by its own
 backend.
 
+**The auth decision is part of the brief** — one line, decided here, wired by you:
+- **Pattern A (default):** internal tool, client's authenticating users fit Access's free
+  tier (≤50) → no auth code in the app; Cloudflare Access + the client's Entra IdP gate the
+  hostname (move 6 covers it).
+- **Pattern B:** external/customer users, >50 users, or per-user roles inside the app →
+  the app gets its own Entra app registration, minted BY YOU via the Graph API (aiops holds
+  Application Developer): single tenant, Web redirect
+  `https://<app>.<CLIENT_DOMAIN>/auth/callback`, delegated `openid profile email` (surface
+  the one admin-consent click if the tenant requires it), 12-month secret → the app's
+  droplet `.env` + expiry → STATE.md. In the app: the stack's standard OIDC library
+  (auth-code + PKCE) — never hand-rolled token validation. Access may stay in front too.
+- Google-workspace clients: not productized yet — stop and flag it.
+
 ## The nine moves
 
 1. **Folder + repo:** `~/Projects/<CLIENT_DOMAIN>/<app>.<CLIENT_DOMAIN>/` (the platform
