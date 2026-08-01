@@ -104,6 +104,7 @@ nothing persists past that console window.
 | 30-uv | uv/uvx (Chroma MCP server runs through it) |
 | 38-x11-session | forces X11 (Wayland off at GDM) — RustDesk/Splashtop can't inject input on Wayland |
 | 40-gnome-qol | screen lock off, idle blanking off; dock = Firefox, Files, Terminal (App Center and Help unpinned) |
+| 41-splashtop-cursorfix | works around a Splashtop ≤3.8.0.0 crash: static cursors (host + snap themes), no Firefox launch spinner, LD_PRELOAD shim on the streamer (only runs where Splashtop is installed) |
 | 42-terminal-prefs | seeds GNOME Terminal prefs (Ctrl+C/V copy-paste, 200×50 window) on fresh boxes — never overwrites later tweaks |
 | 45-hyperv-qol | fixes over-fast wheel scrolling on Hyper-V/remote mice; adds user to `video` group (only runs on Hyper-V) |
 | 50-okular-md | double-clicking a `.md` file opens it rendered (Okular) |

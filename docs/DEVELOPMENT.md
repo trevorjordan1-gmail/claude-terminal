@@ -78,6 +78,15 @@ Numbering: core runs in lexical order — pick a number that respects
 dependencies (base-cli → runtimes → claude stack → desktop). Extras are named
 exactly like their flag.
 
+**`# ct-after-extras`** (core modules only) defers a module to the very end of
+the run, after the extras pass, instead of running it in lexical position. Use
+it when a core module acts on something an *extra* installs — the only case
+today is `41-splashtop-cursorfix`, which is gated on `splashtop-streamer` and
+would otherwise skip on the very run that `--with-splashtop` installed it, so
+the fix would land only on the next bootstrap. Note the consequence: such a
+module's number no longer reflects when it runs, so keep the list short and say
+why in the module header.
+
 ## Adding a feature — checklist
 
 1. Write the module (contract above). Core if both reference machines need

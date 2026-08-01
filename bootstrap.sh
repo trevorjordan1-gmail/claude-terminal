@@ -112,11 +112,21 @@ run_module() {
     RESULTS+=("${name}|${status}|${reason}")
 }
 
+DEFERRED=()
 for f in "$SCRIPT_DIR"/modules/core/*.sh; do
+    # "# ct-after-extras" defers a core module to the end of the run — see below.
+    if grep -q '^# ct-after-extras' "$f"; then DEFERRED+=("$f"); continue; fi
     run_module "$f"
 done
 for e in ${EXTRAS[@]+"${EXTRAS[@]}"}; do
     run_module "$SCRIPT_DIR/modules/extra/$e.sh"
+done
+# A core module that acts on something an *extra* installs has to wait for it.
+# 41-splashtop-cursorfix needs the streamer that --with-splashtop provides, and
+# extras run after core — so without this, a fresh box's crash guard would skip
+# on the run that installed Splashtop and only land on the next one.
+for f in ${DEFERRED[@]+"${DEFERRED[@]}"}; do
+    run_module "$f"
 done
 
 # ---- summary --------------------------------------------------------------------

@@ -128,6 +128,78 @@ else
     s "text/markdown default is '$(xdg-mime query default text/markdown 2>/dev/null)'"
 fi
 
+# ---- 41-splashtop-cursorfix ---------------------------------------------------
+# Only meaningful where Splashtop is installed; RustDesk/other boxes SKIP.
+cursors_static() {   # exit 0 when no animated Xcursor files live under $1/*/cursors/
+    python3 - "$1" <<'PY'
+import struct, glob, os, sys
+bad = 0
+for p in glob.glob(os.path.join(sys.argv[1], '*', 'cursors', '*')):
+    if os.path.islink(p) or not os.path.isfile(p) or p.endswith('.animated'):
+        continue
+    d = open(p, 'rb').read()
+    if d[:4] != b'Xcur':
+        continue
+    n = struct.unpack_from('<I', d, 12)[0]
+    seen = {}
+    for i in range(n):
+        t, sub, _ = struct.unpack_from('<III', d, 16 + i * 12)
+        if t == 0xfffd0002:
+            seen[sub] = seen.get(sub, 0) + 1
+    if seen and max(seen.values()) > 1:
+        bad += 1
+sys.exit(1 if bad else 0)
+PY
+}
+
+if ! pkg_installed splashtop-streamer; then
+    s "no Splashtop streamer — cursor-crash-guard checks skipped"
+elif ! have python3; then
+    s "no python3 — cursor-crash-guard checks skipped"
+else
+    if [ -d /usr/share/icons ]; then
+        if cursors_static /usr/share/icons; then p "host cursor themes all static"
+        else f "animated cursors remain under /usr/share/icons"; fi
+    else
+        s "no /usr/share/icons — host cursor check skipped"
+    fi
+
+    gct=/snap/gtk-common-themes/current/share/icons
+    if [ -d "$gct" ]; then
+        if cursors_static "$gct"; then p "snap theme cursors all static"
+        else f "animated cursors remain in gtk-common-themes (snap apps will crash the streamer)"; fi
+    else
+        s "gtk-common-themes snap absent — snap cursor check skipped"
+    fi
+
+    if dpkg-divert --list 2>/dev/null | grep -q '\.animated$'; then
+        p "cursor diversions in place (survive theme upgrades)"
+    else
+        f "no .animated dpkg diversions — theme upgrades will restore animated cursors"
+    fi
+
+    if [ -e /var/lib/snapd/desktop/applications/firefox_firefox.desktop ]; then
+        if grep -q '^StartupNotify=false$' /usr/local/share/applications/firefox_firefox.desktop 2>/dev/null; then
+            p "Firefox launch spinner disabled"
+        else
+            f "Firefox .desktop override missing or still StartupNotify=true"
+        fi
+    else
+        s "no snap Firefox — launch-spinner check skipped"
+    fi
+
+    if systemctl cat SRStreamer.service >/dev/null 2>&1; then
+        if [ -e /usr/local/lib/splashtop-pixbuf-shim.so ] &&
+           systemctl show SRStreamer.service -p Environment 2>/dev/null | grep -q splashtop-pixbuf-shim; then
+            p "pixbuf race shim wired into SRStreamer.service"
+        else
+            f "pixbuf race shim not wired into SRStreamer.service"
+        fi
+    else
+        s "no SRStreamer.service — shim check skipped"
+    fi
+fi
+
 log "extras (reported only when artifacts exist)"
 if pkg_installed docker-ce; then
     if systemctl is-active docker >/dev/null 2>&1; then p "docker active"; else f "docker installed but not active"; fi

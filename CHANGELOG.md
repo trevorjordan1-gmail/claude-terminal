@@ -14,6 +14,35 @@
   ending the script, and parameters cannot bind. It downloads the script and
   invokes it as a file, so all three behave. `windows/` sits outside module
   dispatch; the module contract does not apply to it.
+- New core module 41-splashtop-cursorfix, working around a use-after-free race
+  in the Splashtop streamer's cursor encoder (SRFeature, ≤3.8.0.0). Animated X
+  cursors trigger it deterministically — the X server cycles their frames and
+  each frame fires an XFixes event the streamer must PNG-encode, so a single
+  animated cursor kills the streamer in about two seconds and drops every
+  session. Four guards: staticize every animated cursor in every host theme via
+  `dpkg-divert` (originals park at `*.animated`, so theme upgrades land
+  harmlessly); republish Firefox's `.desktop` with `StartupNotify=false` so
+  launching it never asks for a busy cursor; repack and sideload
+  `gtk-common-themes`, because snap apps can't see host themes at all; and
+  LD_PRELOAD a shim onto the streamer that defers cursor-pixbuf destruction by
+  three seconds, closing the race itself — the deterministic trigger is only
+  part of it, since ordinary cursor churn fires the same race occasionally.
+  Scanning every file in every theme matters: `half-busy`, legacy hash-named
+  files, and the Adwaita/DMZ/redglass fallbacks are animated too, and a first
+  attempt covering only Yaru's four named cursors kept crashing. The module
+  skips entirely unless `splashtop-streamer` is installed, so RustDesk boxes
+  are untouched. Live desktop sessions need one logout, since running apps hold
+  cursors built from the old files. A version canary raises a NEXT STEPS line
+  once the installed streamer is newer than 3.8.0.0, so an upstream fix prompts
+  retirement rather than passing silently; revert steps are in the module
+  header. Caveat: the sideloaded theme snap no longer auto-refreshes, and a
+  manual `snap refresh --amend` would restore animated cursors until the next
+  bootstrap run — the shim still prevents crashes in that window.
+- `bootstrap.sh`: a core module may now carry `# ct-after-extras` to run at the
+  very end of a run instead of in the core pass. 41-splashtop-cursorfix needs
+  the streamer that `--with-splashtop` installs during the extras pass, and
+  extras run after core — without this, a fresh box would skip the crash guard
+  on the very run that installed Splashtop.
 - `modules/extra/splashtop.sh` is real: `./bootstrap.sh --with-splashtop`
   installs Splashtop Streamer, asks for your 12-digit deployment code, and
   registers the machine, so it appears in the Splashtop console when the run
