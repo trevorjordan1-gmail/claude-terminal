@@ -4,6 +4,8 @@
 # Run from ~/Projects/<domain>/ AFTER PLATFORM-BUILD. Re-proves the platform from the
 # outside in and writes PLATFORM-VERIFICATION.md (summary + raw evidence) for the
 # engineer to review — the human gate on "platform build verified."
+# Commit any previous PLATFORM-VERIFICATION.md before running — uncommitted evidence
+# rightly trips the lingering-work sweep (field-hit).
 #
 # Degrades honestly: a check it cannot run is reported SKIP with the reason, never PASS.
 set -uo pipefail
@@ -90,13 +92,30 @@ case "$HTTPCODE" in
   000) result FAIL "status.$DOMAIN unreachable" "" ;;
   *) result FAIL "status.$DOMAIN unexpected HTTP $HTTPCODE" "" ;;
 esac
-TUN=$(curl -s --max-time 15 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-  "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/cfd_tunnel?is_deleted=false" \
-  | python3 -c 'import json,sys;ts=json.load(sys.stdin).get("result") or [];print(";".join(f"{t[\"name\"]}={t[\"status\"]}" for t in ts))' 2>/dev/null)
-if echo "$TUN" | grep -q "healthy"; then
-  result PASS "tunnel healthy" "$TUN"
+if [ -n "${ACCESS_PROBE_CLIENT_ID:-}" ] && [ -n "${ACCESS_PROBE_CLIENT_SECRET:-}" ]; then
+  AUTHCODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+    -H "CF-Access-Client-Id: $ACCESS_PROBE_CLIENT_ID" \
+    -H "CF-Access-Client-Secret: $ACCESS_PROBE_CLIENT_SECRET" "https://status.$DOMAIN" || echo 000)
+  if [ "$AUTHCODE" = 200 ]; then
+    result PASS "status.$DOMAIN authenticated → 200 (service-token probe)" ""
+  else
+    result FAIL "status.$DOMAIN authenticated probe got HTTP $AUTHCODE" ""
+  fi
 else
-  result FAIL "tunnel not healthy" "${TUN:-no API answer}"
+  result SKIP "authenticated → 200 (no ACCESS_PROBE_* in the pack — mint the probe service token)" ""
+fi
+# jq, not python: nested f-string quoting inside sh single quotes was a field-hit SyntaxError
+if command -v jq >/dev/null 2>&1; then
+  TUN=$(curl -s --max-time 15 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+    "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/cfd_tunnel?is_deleted=false" \
+    | jq -r '[.result[]? | "\(.name)=\(.status)"] | join(";")' 2>/dev/null)
+  if echo "$TUN" | grep -q "healthy"; then
+    result PASS "tunnel healthy" "$TUN"
+  else
+    result FAIL "tunnel not healthy" "${TUN:-no API answer}"
+  fi
+else
+  result SKIP "tunnel health — jq not installed" ""
 fi
 
 # ── 3 · database isolation ──────────────────────────────────────────────────

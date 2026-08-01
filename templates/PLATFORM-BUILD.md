@@ -18,7 +18,8 @@ STATE.md as it goes live, with IDs.
 
 ## 1 · Droplet — `docker01.<CLIENT_DOMAIN>`
 
-- Create via `doctl … -t "$DO_API_KEY"`: Ubuntu 24.04 LTS, ~4GB/2vCPU (resize later), no
+- Create via `doctl … -t "$DO_API_KEY"`: Ubuntu 24.04 LTS, ~4GB/2vCPU (resize later),
+  **region = nearest to `CLIENT_LOCATION`** from the pack, no
   IPv6, **daily DO backups ON at creation** (hour must be 0/4/8/12/16/20 UTC — remember the
   window when scheduling crons later), monitoring agent, the terminal's SSH key (generate
   ed25519 here if none; passphrase-less is deliberate — 0600 + firewall are the controls).
@@ -53,7 +54,8 @@ the droplet's `.env` is authoritative for its secrets):
   entrypoint; **`forwardedHeaders.trustedIPs` scoped to the tunnel network's subnet** (or
   apps see `X-Forwarded-Proto: http` and break secure cookies — the pilot's subtle one).
 - **Three networks:** `tunnel` (cloudflared ↔ Traefik only — NOT `internal:`, cloudflared
-  must dial out), `edge` (external; Traefik ↔ apps — but apps do NOT join it, see §6),
+  must dial out), `edge` (external; **Traefik's home base only — apps NEVER join it**;
+  Traefik reaches each app over that app's own `<app>-net`, declared per NEW-APP move 4),
   `socket` (`internal: true`; Traefik reads Docker labels via a socket-proxy allowing only
   CONTAINERS/EVENTS/PING/VERSION — Traefik never touches the raw socket).
 - No `ports:` anywhere in any compose file, ever.
@@ -64,9 +66,19 @@ the droplet's `.env` is authoritative for its secrets):
 ## 3 · Cloudflare Access on every app hostname
 
 Access application per hostname (`status.<CLIENT_DOMAIN>` now; NEW-APP adds one per app):
-allow the client's staff emails (office-IP bypass optional), deny the world. The client's
-Entra as IdP later once admin access exists. **Proof:** unauthenticated request → Access
-challenge; authenticated → 200.
+
+- **IdP:** when the pack carries `ENTRA_*` (it should — one app registration per client,
+  minted at the accounts pass), policies allow the client's staff via Entra
+  (`CLIENT_STAFF_DOMAIN` / groups) — normal M365 sign-in, MFA applies, Entra offboarding
+  kills access. Fallback when Entra isn't wired yet: email-OTP allow-list on
+  `CLIENT_STAFF_DOMAIN` + the engineer. Keep OTP enabled as adNET's break-glass either way.
+- **The headless proof, standardized:** mint the Access **service token**
+  `<CLIENT_CODE>-cct01-probe` (needs `Access: Service Tokens Edit` on the CF token) + a
+  Service Auth policy on each app; append `ACCESS_PROBE_CLIENT_ID`/`ACCESS_PROBE_CLIENT_SECRET`
+  to the workspace `.env`. Every deploy and the verification battery can then assert
+  **authenticated → 200** with headers, no human OTP login ever needed.
+- **Proof:** unauthenticated request → Access challenge; request with the probe token's
+  `CF-Access-Client-Id`/`CF-Access-Client-Secret` headers → 200.
 
 ## 4 · Postgres — one instance, walls proven
 
@@ -86,14 +98,19 @@ postgres/template1 from PUBLIC) — runs once on empty PGDATA only.
 - Via `$HEALTHCHECKS_API_KEY` create one check per system: each site (curled via its
   PUBLIC URL from the droplet cron — edge failures alert too), each backup job,
   restore-verify, disk/containers, status-page-up. Success-ping only; silence past grace →
-  email (down + recovery) to the client contact + adNET alerts mailbox.
+  email (down + recovery). **Bind the two email integrations pre-created at the accounts
+  pass** (`CLIENT_ALERT_EMAILS` contact + `ADNET_ALERTS_MAILBOX`) to every check via the
+  API — channels can't be API-created, but binding them can; alerting is complete today,
+  not homework.
 - **`status.<CLIENT_DOMAIN>`** — the platform's first container, scaffolded exactly as
   NEW-APP.md prescribes (own repo `<GITHUB_ORG>/status.<CLIENT_DOMAIN>`, own net/db-less,
   CI from day one, Access-gated hostname): a tiny page reading the Healthchecks
   **read-only** key every minute — overall banner, checks grouped by tag, last-ping ages,
   client-branded. Engine off-box, display on-box; it pings its own check.
-- **Proof:** all checks green; then a deliberate **silent-alarm test** — suspend one cron,
-  watch the alert actually arrive, restore it, watch recovery arrive.
+- **Proof:** all checks green; then a deliberate **silent-alarm test** — suspend one cron
+  and wait out the FULL silence window (check period + grace; set the drill check to
+  period 1m / grace 3m so the wait is ~4 minutes — restarting one minute early voids the
+  drill), watch the alert actually arrive, restore, watch recovery arrive.
 
 ## 6 · Backups — restic → Wasabi, restore verified nightly
 
@@ -111,8 +128,14 @@ postgres/template1 from PUBLIC) — runs once on empty PGDATA only.
 
 ## 7 · Verify everything — `platform-verify.sh`
 
-Run `scripts/platform-verify.sh` (ships in templates/). It re-proves the battery from the
-outside in and writes `PLATFORM-VERIFICATION.md` with raw outputs. **The engineer reviews
-that report — that's the human gate.** Update STATE.md: stage-4 ✅ with date, live
+**Generated-secrets rule, throughout the build:** anything you mint that has no template
+home (the break-glass console password, meta connection strings) goes into ONE file —
+`HANDOFF-TO-HUDU.md` (0600) in the workspace. The engineer sweeps it into Hudu at sign-off
+and deletes it. No ad-hoc parking spots.
+
+Commit any previous `PLATFORM-VERIFICATION.md` first (uncommitted evidence rightly trips
+the lingering-work sweep), then run `scripts/platform-verify.sh`. It re-proves the battery
+from the outside in and writes `PLATFORM-VERIFICATION.md` with raw outputs. **The engineer
+reviews that report — that's the human gate.** Update STATE.md: stage-4 ✅ with date, live
 components table filled, verified-at-close table = the battery results. Commit, push, CI
 green, `workspace-status.sh` clean. Report to the engineer in plain language.

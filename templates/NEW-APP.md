@@ -24,7 +24,10 @@ backend.
    same machine-identity credential helper + builder author stamp as the platform repo,
    private repo in `<GITHUB_ORG>`, wiki/projects off, Dependabot alerts on.
 2. **CI from day one:** copy `templates/tool-ci.yml` → `.github/workflows/ci.yml`, fill the
-   real test step. First push must go green before anything deploys.
+   real test step. First push must go green before anything deploys. Dockerfile trap
+   (field-hit): `node:*-slim` runtime stages ship npm/corepack with vulnerable bundled deps
+   that fail the Trivy gate — build in a builder stage, copy artifacts only, and strip
+   npm/corepack from the final image.
 3. **Database (if needed):** on the droplet, `cd /opt/<CLIENT_CODE>/postgres &&
    ./db-add.sh <app>` — the printed `DATABASE_URL` goes ONLY into the app's droplet `.env`
    (0600). Never reuse another app's database or credentials.

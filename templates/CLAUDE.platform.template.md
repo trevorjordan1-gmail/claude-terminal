@@ -59,13 +59,19 @@ and the recipe for new apps. Loaded at the start of every `cc` session rooted he
 10. **The builder never touches git, the droplet, or internals.** You own the mechanics
     end to end and explain outcomes in plain language — no git/PR/CI jargon in conversation.
 
-**Pre-commit secret check** (run inside the repo being committed):
+**Pre-commit secret check** (run inside the repo being committed — the pattern is built
+defensively, skipping unset vars, so an empty value can never break the check or leak a
+prefix into an error message):
 ```bash
 set -a; . {{PLATFORM_DIR}}/.env; set +a
 git add -A
 git diff --cached --name-only | grep -x '.env' && { echo "ABORT: .env staged"; exit 1; }
-git diff --cached | grep -qE "$(printf '%s' "$CLOUDFLARE_API_TOKEN" | head -c 32)|$(printf '%s' "$GITHUB_PAT" | head -c 32)|gh[pousr]_[A-Za-z0-9]{16,}|dop_v1_[a-f0-9]{40,}|github_pat_[A-Za-z0-9_]{20,}" \
-  && { echo "ABORT: live secret in staged diff"; exit 1; }
+PAT='gh[pousr]_[A-Za-z0-9]{16,}|dop_v1_[a-f0-9]{40,}|github_pat_[A-Za-z0-9_]{20,}'
+for v in CLOUDFLARE_API_TOKEN GITHUB_PAT DO_API_KEY WASABI_SECRET_KEY \
+         HEALTHCHECKS_API_KEY ENTRA_CLIENT_SECRET; do
+  [ -n "${!v:-}" ] && PAT="$PAT|$(printf '%s' "${!v}" | head -c 32)"
+done
+git diff --cached | grep -qE "$PAT" && { echo "ABORT: live secret in staged diff"; exit 1; }
 ```
 
 ---
