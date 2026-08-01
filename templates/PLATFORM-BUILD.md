@@ -130,8 +130,17 @@ postgres/template1 from PUBLIC) — runs once on empty PGDATA only.
 
 **Generated-secrets rule, throughout the build:** anything you mint that has no template
 home (the break-glass console password, meta connection strings) goes into ONE file —
-`HANDOFF-TO-HUDU.md` (0600) in the workspace. The engineer sweeps it into Hudu at sign-off
-and deletes it. No ad-hoc parking spots.
+`HANDOFF-TO-HUDU.md` (0600) in the workspace — written as **ready-to-paste Hudu entries**,
+one per secret: `Entry name:` / `Username:` / `Password:` / `Notes:`. Name = what it
+unlocks + where it's used; notes = where the credential works, when it was set, and the
+rotate-after-use rule. The break-glass entry, exactly:
+`docker01.<CLIENT_DOMAIN> — break-glass console (<user>)`, username = the sudo user,
+notes = "Emergency console access for docker01.<CLIENT_DOMAIN> (DO droplet <id>). Works
+ONLY at the DigitalOcean web console — SSH password auth and root login are disabled.
+Log in as <user>, then sudo -i. Set at platform build <date>; only its hash ever touched
+the droplet. If used: record why, then rotate (passwd <user>) and update this entry."
+The engineer sweeps the file into the client's "Ai Foundations" folder at sign-off and
+deletes it. No ad-hoc parking spots.
 
 Commit any previous `PLATFORM-VERIFICATION.md` first (uncommitted evidence rightly trips
 the lingering-work sweep), then run `scripts/platform-verify.sh`. It re-proves the battery
