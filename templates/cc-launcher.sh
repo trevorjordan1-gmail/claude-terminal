@@ -90,7 +90,9 @@ if [ -z "$TARGET" ]; then
     printf "  %d) %-14s %s\n" "$((i+1))" "$name" "$desc"
   done
   read -rp "> " pick
-  [[ "$pick" =~ ^[0-9]+$ ]] && [ "$pick" -ge 1 ] && [ "$pick" -le "${#PATHS[@]}" ] || { echo "Invalid choice."; exit 1; }
+  if ! [[ "$pick" =~ ^[0-9]+$ ]] || [ "$pick" -lt 1 ] || [ "$pick" -gt "${#PATHS[@]}" ]; then
+    echo "Invalid choice."; exit 1
+  fi
   TARGET="${PATHS[$((pick-1))]}"
 fi
 

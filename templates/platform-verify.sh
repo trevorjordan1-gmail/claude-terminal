@@ -10,7 +10,10 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
 [ -f .env ] || { echo "No ./.env — run from the platform folder."; exit 1; }
-set -a; . ./.env; set +a
+set -a
+# shellcheck disable=SC1091 # runtime file, never in the repo
+. ./.env
+set +a
 
 DOMAIN="${CLIENT_DOMAIN:?CLIENT_DOMAIN missing from .env}"
 CODE="${CLIENT_CODE:?CLIENT_CODE missing from .env}"
@@ -23,6 +26,7 @@ result() { # $1 PASS|FAIL|SKIP, $2 name, $3 evidence
   case "$1" in PASS) PASS=$((PASS+1));; FAIL) FAIL=$((FAIL+1));; SKIP) SKIP=$((SKIP+1));; esac
   say "- **$1** — $2"
   [ -n "${3:-}" ] && say "  \`$3\`"
+  return 0   # the evidence test above must never become the function's status
 }
 
 # ── locate the droplet ──────────────────────────────────────────────────────
@@ -55,15 +59,22 @@ if [ -n "$IP" ]; then
   else
     result FAIL "port 22 unreachable from the allowed source" ""
   fi
-  LISTEN=$(ssh_run "ss -tln '! src 127.0.0.0/8' '! src [::1]' | tail -n +2")
-  if [ -n "$LISTEN" ] && ! echo "$LISTEN" | grep -vq ':22 '; then
+  # shellcheck disable=SC2016 # single quotes are deliberate: awk's $4 must survive to the droplet
+  LISTEN=$(ssh_run 'ss -tln | tail -n +2 | awk "{print \$4}" | grep -vE "^(127\.|\[::1\])"')
+  if [ -n "$LISTEN" ] && ! echo "$LISTEN" | grep -vq ':22$'; then
     result PASS "host listens on :22 only (non-loopback)" ""
+  elif [ -z "$LISTEN" ]; then
+    result SKIP "host listening sockets — no data (ssh reachable?)" ""
   else
-    result "$([ -z "$LISTEN" ] && echo SKIP || echo FAIL)" "host listening sockets" "$(echo "$LISTEN" | tr '\n' ' | ')"
+    result FAIL "unexpected listening sockets" "$(echo "$LISTEN" | tr '\n' ' ')"
   fi
+  # shellcheck disable=SC2016 # single quotes are deliberate: $(docker ps -q) expands on the droplet
   PORTS=$(ssh_run 'for c in $(docker ps -q); do docker port "$c"; done')
-  [ -z "$PORTS" ] && result PASS "no container publishes a host port" "" \
-                  || result FAIL "published container ports found" "$PORTS"
+  if [ -z "$PORTS" ]; then
+    result PASS "no container publishes a host port" ""
+  else
+    result FAIL "published container ports found" "$PORTS"
+  fi
 else
   result SKIP "port scan — droplet IP not found (doctl/DROPLET_IP)" ""
 fi
@@ -82,21 +93,34 @@ esac
 TUN=$(curl -s --max-time 15 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
   "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/cfd_tunnel?is_deleted=false" \
   | python3 -c 'import json,sys;ts=json.load(sys.stdin).get("result") or [];print(";".join(f"{t[\"name\"]}={t[\"status\"]}" for t in ts))' 2>/dev/null)
-echo "$TUN" | grep -q "healthy" && result PASS "tunnel healthy" "$TUN" \
-  || result FAIL "tunnel not healthy" "${TUN:-no API answer}"
+if echo "$TUN" | grep -q "healthy"; then
+  result PASS "tunnel healthy" "$TUN"
+else
+  result FAIL "tunnel not healthy" "${TUN:-no API answer}"
+fi
 
 # ── 3 · database isolation ──────────────────────────────────────────────────
 say "## 3 · Database isolation"
 ISO=$(ssh_run "cd /opt/$CODE/postgres && sudo -n ./db-verify-isolation.sh" | tail -3)
-echo "$ISO" | grep -qiE 'pass|9/9' && result PASS "isolation walls proven" "$(echo "$ISO" | tail -1)" \
-  || result "$([ -z "$ISO" ] && echo SKIP || echo FAIL)" "db-verify-isolation" "${ISO:-unreachable}"
+if echo "$ISO" | grep -qiE 'pass|9/9'; then
+  result PASS "isolation walls proven" "$(echo "$ISO" | tail -1)"
+elif [ -z "$ISO" ]; then
+  result SKIP "db-verify-isolation — unreachable" ""
+else
+  result FAIL "db-verify-isolation" "$ISO"
+fi
 
 # ── 4 · monitoring ──────────────────────────────────────────────────────────
 say "## 4 · Monitoring"
 HC=$(curl -s --max-time 15 -H "X-Api-Key: $HEALTHCHECKS_API_KEY" https://healthchecks.io/api/v3/checks/ \
   | python3 -c 'import json,sys;cs=json.load(sys.stdin).get("checks") or [];print(f"{len(cs)} checks: "+", ".join(sorted(set(c["status"] for c in cs))))' 2>/dev/null)
-echo "$HC" | grep -qE 'checks: up$' && result PASS "all Healthchecks up" "$HC" \
-  || result "$([ -z "$HC" ] && echo SKIP || echo FAIL)" "Healthchecks state" "${HC:-no API answer}"
+if echo "$HC" | grep -qE 'checks: up$'; then
+  result PASS "all Healthchecks up" "$HC"
+elif [ -z "$HC" ]; then
+  result SKIP "Healthchecks state — no API answer" ""
+else
+  result FAIL "Healthchecks state" "$HC"
+fi
 say "> The silent-alarm + backup-failure drills are one-time build proofs — their dates"
 say "> live in STATE.md; this battery checks the steady state."
 
@@ -105,8 +129,13 @@ say "## 5 · Backups"
 SNAP=$(ssh_run "sudo -n /opt/$CODE/backup/restic-snapshots-age.sh 2>/dev/null || echo none")
 case "$SNAP" in
   none|"") result SKIP "droplet restic snapshot age (helper missing)" "" ;;
-  *) echo "$SNAP" | grep -qE 'FRESH' && result PASS "droplet restic snapshot fresh (<26h)" "$SNAP" \
-       || result FAIL "droplet restic snapshot stale" "$SNAP" ;;
+  *)
+    if echo "$SNAP" | grep -qE 'FRESH'; then
+      result PASS "droplet restic snapshot fresh (<26h)" "$SNAP"
+    else
+      result FAIL "droplet restic snapshot stale" "$SNAP"
+    fi
+    ;;
 esac
 
 # ── 6 · nothing lingers ─────────────────────────────────────────────────────

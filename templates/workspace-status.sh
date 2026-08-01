@@ -20,6 +20,7 @@ FINDINGS=0
 # Load the platform .env if present (GH_TOKEN for CI checks) — per-invocation,
 # never persisted, same rule as everywhere else on this terminal.
 for envfile in "$PROJECTS"/*.tools/.env; do
+  # shellcheck source=/dev/null
   [ -f "$envfile" ] && { set -a; . "$envfile"; set +a; break; }
 done
 
