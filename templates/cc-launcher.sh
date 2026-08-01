@@ -10,8 +10,8 @@
 # Direct shortcut: `cc <folder>` skips the menu (e.g. `cc acme.tools`).
 # Extra args pass through to claude: `cc acme.tools --resume`.
 #
-# Ships in claude-terminal templates/; bootstrap installs it as ~/.local/bin/cc
-# and keeps the tmux variant working: phonecc attaches to the same picker.
+# Ships in claude-terminal templates/; the SETUP run installs it as
+# ~/.local/bin/cc-launcher and points the cc/phonecc aliases at it.
 set -uo pipefail
 
 PROJECTS="$HOME/Projects"

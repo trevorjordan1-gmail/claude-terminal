@@ -14,10 +14,13 @@ to resume from this file alone.
 blocked on whom.}}
 
 ```
-⬜ Stage 2  Accounts & pack — aiops identity, 5 vendor accounts, tokens minted,
-            Hudu root-of-trust, pack verified on this terminal (writes probed)
-⬜ Stage 3  Terminal + workspace — VM built, bootstrap run, Splashtop bound,
-            SETUP complete (this folder + repo exist, launcher installed)
+⬜ Stage 2a Accounts & pack — 5 vendor accounts + tokens minted; pack-verify
+            writes probed on this terminal (MACHINE-VERIFIED)
+⬜ Stage 2b Hudu "Ai Foundations" root-of-trust vaulted (ENGINEER ATTESTS —
+            not verifiable from this box)
+⬜ Stage 3  Terminal + workspace — VM built, bootstrap run, Streamer running
+            (machine-verified) + machine bound under the client in Splashtop
+            (ENGINEER ATTESTS) · SETUP complete (folder + repo + launcher)
 ⬜ Stage 4  PLATFORM BUILD — droplet hardened → tunnel → edge → Access → Postgres
             (isolation PROVEN) → Healthchecks → status.{{CLIENT_DOMAIN}} →
             restic + restore-verify → platform-verify battery PASSED
