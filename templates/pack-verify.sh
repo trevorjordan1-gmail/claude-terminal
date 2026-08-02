@@ -41,7 +41,8 @@ done
 case "$GITHUB_ORG" in
   *" "*|*,*) bad "GITHUB_ORG must be the URL slug (after github.com/), not a display name" "$GITHUB_ORG"; MISS=1 ;;
 esac
-for v in DO_TOKEN_EXPIRES CF_TOKEN_ID CF_TOKEN_EXPIRES GITHUB_PAT_EXPIRES; do
+for v in DO_TOKEN_EXPIRES CF_TOKEN_ID CF_TOKEN_EXPIRES GITHUB_PAT_EXPIRES \
+         GITHUB_CLASSIC_EXPIRES ENTRA_SECRET_EXPIRES; do
   [ -n "${!v:-}" ] || echo "  (note: $v empty — expiry/ID is only on screen at mint time)"
 done
 for v in CLIENT_LOCATION CLIENT_STAFF_DOMAIN CLIENT_ALERT_EMAILS ADNET_ALERTS_MAILBOX \
