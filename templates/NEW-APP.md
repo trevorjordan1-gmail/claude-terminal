@@ -43,7 +43,7 @@ backend.
    that fail the Trivy gate — build in a builder stage, copy artifacts only, and strip the
    package managers from the final image:
    `RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn*`
-   The app's `scripts/deploy.sh` comes from `templates/deploy.app.template.sh` — the
+   The app's `scripts/deploy.sh` comes from `templates/deploy.app.template` — the
    dual-path deploy (pull the CI image from GHCR; if the PAT lacks Packages, ship the
    CI-green tree and build the identical tag on the droplet — CI stays the record either
    way), ending with the Access-challenge + probe-token verification.
