@@ -6,11 +6,19 @@ ONE registration per client, ever.
 
 ## Step 1 — create the registration (who runs what)
 
-**FIRST — look up the real Zero Trust team domain** (field-hit: Cloudflare AUTO-GENERATES
-it, e.g. `hidden-resonance-c421`; the conventional short name may belong to another
-customer, and a guessed redirect URI fails staff sign-in with AADSTS50011):
-`GET /accounts/{id}/access/organizations` → `.result.auth_domain` (the pack token can read
-it). Pass its prefix as `-TeamName`.
+**Sequencing:** the registration needs no terminal and no platform — on a FRESH
+engagement the engineer creates it during the accounts pass (stage 2, script path below)
+and this runbook's step 2 runs later at platform build. The relay flow exists for
+RETROFITS (a terminal already lives, the accounts pass predates the SSO step — the field-hit
+case). Nothing hard-blocks: a build without `ENTRA_*` ships email-OTP policies, and step 2
+flips them to Entra when the values land (field-proven).
+
+**FIRST — the real Zero Trust team domain** (field-hit: Cloudflare AUTO-GENERATES it,
+e.g. `hidden-resonance-c421`; the conventional short name may belong to another customer,
+and a guessed redirect URI fails staff sign-in with AADSTS50011): it's `TEAM_DOMAIN` in
+the pack (recorded at the ZT bootstrap); verify any time via
+`GET /accounts/{id}/access/organizations` → `.result.auth_domain`. Pass its prefix as
+`-TeamName`.
 
 - **Managed tenant (adNET holds admin) — two equivalent ways:**
   - *From the engineer's own machine:* any PowerShell,

@@ -45,7 +45,7 @@ for v in DO_TOKEN_EXPIRES CF_TOKEN_ID CF_TOKEN_EXPIRES GITHUB_PAT_EXPIRES; do
   [ -n "${!v:-}" ] || echo "  (note: $v empty — expiry/ID is only on screen at mint time)"
 done
 for v in CLIENT_LOCATION CLIENT_STAFF_DOMAIN CLIENT_ALERT_EMAILS ADNET_ALERTS_MAILBOX \
-         ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_CLIENT_SECRET; do
+         TEAM_DOMAIN ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_CLIENT_SECRET; do
   [ -n "${!v:-}" ] || echo "  (note: $v empty — the platform build will need a judgment call or fallback)"
 done
 [ "$MISS" -eq 0 ] && ok "pack lints clean ($ENVFILE: ${#REQUIRED[@]} names, sources cleanly)"

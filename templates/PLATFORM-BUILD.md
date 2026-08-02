@@ -70,10 +70,13 @@ the droplet's `.env` is authoritative for its secrets):
 Access application per hostname (`status.<CLIENT_DOMAIN>` now; NEW-APP adds one per app):
 
 - **IdP:** when the pack carries `ENTRA_*` (it should — one app registration per client,
-  minted at the accounts pass), policies allow the client's staff via Entra
-  (`CLIENT_STAFF_DOMAIN` / groups) — normal M365 sign-in, MFA applies, Entra offboarding
-  kills access. Fallback when Entra isn't wired yet: email-OTP allow-list on
-  `CLIENT_STAFF_DOMAIN` + the engineer. Keep OTP enabled as adNET's break-glass either way.
+  minted at the accounts pass), wire the Entra login method into Zero Trust (API) and the
+  policies allow the client's staff via Entra: `@CLIENT_STAFF_DOMAIN` +
+  `@<tenant>.onmicrosoft.com`, nothing else (no personal adNET emails) — normal M365
+  sign-in, MFA applies, Entra offboarding kills access. **`ENTRA_*` absent (e.g. external
+  IT hasn't replied yet): do NOT block the build** — ship email-OTP policies on
+  `CLIENT_STAFF_DOMAIN`, note it in STATE.md, and ENTRA-SSO.md step 2 flips them when the
+  values land (field-proven). Keep OTP enabled as adNET's break-glass either way.
 - **The headless proof, standardized:** mint the Access **service token**
   `<CLIENT_CODE>-cct01-probe` (needs `Access: Service Tokens Edit` on the CF token) + a
   Service Auth policy on each app; append `ACCESS_PROBE_CLIENT_ID`/`ACCESS_PROBE_CLIENT_SECRET`
