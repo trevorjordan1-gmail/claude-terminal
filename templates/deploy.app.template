@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # deploy.sh — stamped per app by NEW-APP (fill every {{placeholder}}). One command,
 # idempotent, field-proven shape: verify CI green for HEAD → get that EXACT image onto
-# the droplet (pull from GHCR; if the machine PAT lacks Packages access, ship the same
-# tree and build the identical tag there — CI stays the record either way) → recreate →
-# wait healthy → prune → verify the live URL through Access.
+# the droplet (pull from GHCR with GITHUB_CLASSIC — ghcr.io REFUSES fine-grained PATs,
+# a classic read:packages-only token is the pack standard; no classic token or pull
+# fails → ship the same tree and build the identical tag there; CI stays the record
+# either way) → recreate → wait healthy → prune → verify the live URL through Access.
 #
 # stdin rule (field-hit): one stdin per remote command — heredoc OR pipe, never both;
 # archives travel as FILES via scp, keeping stdin free for the remote script.
@@ -27,14 +28,14 @@ conclusion=$(GH_TOKEN="$GITHUB_PAT" gh run list -R "$ORG/$APP" \
 echo "· droplet: image $IMG:$sha (pull, else build the same tree)"
 if ssh "$DROPLET" 'sudo -n bash -s' <<EOF
 set -euo pipefail
-printf '%s' "$GITHUB_PAT" | docker login ghcr.io -u x-access-token --password-stdin >/dev/null 2>&1
+printf '%s' "${GITHUB_CLASSIC:-}" | docker login ghcr.io -u {{CODE}}-aiops --password-stdin >/dev/null 2>&1
 ok=0; docker pull -q "$IMG:$sha" >/dev/null 2>&1 || ok=1
 docker logout ghcr.io >/dev/null 2>&1
 exit \$ok
 EOF
 then echo "  pulled CI image"
 else
-  echo "  GHCR pull unavailable — building the CI-green tree on the droplet"
+  echo "  GHCR pull unavailable (GITHUB_CLASSIC missing/refused) — building the CI-green tree on the droplet"
   tmp=$(mktemp)
   git archive --format=tar.gz HEAD -o "$tmp"
   scp -q "$tmp" "$DROPLET:/tmp/app-$sha.tgz"

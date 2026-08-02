@@ -44,9 +44,12 @@ backend.
    package managers from the final image:
    `RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn*`
    The app's `scripts/deploy.sh` comes from `templates/deploy.app.template` — the
-   dual-path deploy (pull the CI image from GHCR; if the PAT lacks Packages, ship the
-   CI-green tree and build the identical tag on the droplet — CI stays the record either
-   way), ending with the Access-challenge + probe-token verification.
+   dual-path deploy (pull the CI image from GHCR using `GITHUB_CLASSIC`, the classic
+   read:packages-only token — **ghcr.io refuses fine-grained PATs entirely**; pull
+   unavailable → ship the CI-green tree and build the identical tag on the droplet — CI
+   stays the record either way), ending with the Access-challenge + probe-token
+   verification. GHCR login is transient (login → pull → logout) as the machine-account
+   username, never `x-access-token`.
 3. **Database (if needed):** on the droplet, `cd /opt/<CLIENT_CODE>/postgres &&
    ./db-add.sh <app>` — the printed `DATABASE_URL` goes ONLY into the app's droplet `.env`
    (0600). Never reuse another app's database or credentials.

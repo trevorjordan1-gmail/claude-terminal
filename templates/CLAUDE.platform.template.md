@@ -69,7 +69,7 @@ git add -A
 git diff --cached --name-only | grep -xE '\.env|\.break-glass.*|HANDOFF-TO-HUDU\.md' \
   && { echo "ABORT: secret file staged"; exit 1; }
 pat='gh[pousr]_[A-Za-z0-9]{16,}|dop_[v]1_[a-f0-9]{40,}|github_[p]at_[A-Za-z0-9_]{20,}|eyJ[h]Ijo'
-for v in CLOUDFLARE_API_TOKEN GITHUB_PAT DO_API_KEY WASABI_SECRET_KEY \
+for v in CLOUDFLARE_API_TOKEN GITHUB_PAT GITHUB_CLASSIC DO_API_KEY WASABI_SECRET_KEY \
          WASABI_RESTIC_SECRET_KEY HEALTHCHECKS_API_KEY HEALTHCHECK_READONLY_API_KEY \
          RESTIC_PASSWORD_CCT RESTIC_PASSWORD_DOCKER01 ENTRA_CLIENT_SECRET; do
   val="${!v:-}"; [ -n "$val" ] && pat="$pat|$(printf '%s' "$val" | head -c 24)"
