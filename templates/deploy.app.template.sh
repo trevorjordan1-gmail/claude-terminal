@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# deploy.sh — stamped per app by NEW-APP (fill every {{placeholder}}). One command,
+# idempotent, field-proven shape: verify CI green for HEAD → get that EXACT image onto
+# the droplet (pull from GHCR; if the machine PAT lacks Packages access, ship the same
+# tree and build the identical tag there — CI stays the record either way) → recreate →
+# wait healthy → prune → verify the live URL through Access.
+#
+# stdin rule (field-hit): one stdin per remote command — heredoc OR pipe, never both;
+# archives travel as FILES via scp, keeping stdin free for the remote script.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+APP={{APP_FQDN}}                       # e.g. status.acme.tools (folder == repo == subdomain)
+SHORT={{APP_SHORT}}                    # container name, e.g. status
+ORG={{GITHUB_ORG}}                     # org slug (exact case)
+DROPLET={{CODE}}-docker01              # ~/.ssh/config alias
+IMG="ghcr.io/$(echo "$ORG" | tr '[:upper:]' '[:lower:]')/$APP"
+sha=$(git rev-parse HEAD)
+
+# shellcheck source=/dev/null
+set -a; . ../.env; set +a              # the platform pack, one level up
+
+echo "· CI for ${sha:0:12} must be green"
+conclusion=$(GH_TOKEN="$GITHUB_PAT" gh run list -R "$ORG/$APP" \
+  --commit "$sha" --json conclusion --jq '.[0].conclusion // "none"')
+[ "$conclusion" = "success" ] || { echo "ABORT: CI for $sha is '$conclusion' — no deploy around a red run"; exit 1; }
+
+echo "· droplet: image $IMG:$sha (pull, else build the same tree)"
+if ssh "$DROPLET" 'sudo -n bash -s' <<EOF
+set -euo pipefail
+printf '%s' "$GITHUB_PAT" | docker login ghcr.io -u x-access-token --password-stdin >/dev/null 2>&1
+ok=0; docker pull -q "$IMG:$sha" >/dev/null 2>&1 || ok=1
+docker logout ghcr.io >/dev/null 2>&1
+exit \$ok
+EOF
+then echo "  pulled CI image"
+else
+  echo "  GHCR pull unavailable — building the CI-green tree on the droplet"
+  tmp=$(mktemp)
+  git archive --format=tar.gz HEAD -o "$tmp"
+  scp -q "$tmp" "$DROPLET:/tmp/app-$sha.tgz"
+  rm -f "$tmp"
+  ssh "$DROPLET" 'sudo -n bash -s' <<EOF
+set -euo pipefail
+d=\$(mktemp -d)
+tar -xzf "/tmp/app-$sha.tgz" -C "\$d"
+docker build -q -t "$IMG:$sha" "\$d" >/dev/null
+rm -rf "\$d" "/tmp/app-$sha.tgz"
+EOF
+fi
+
+echo "· recreate + health"
+ssh "$DROPLET" 'sudo -n bash -s' <<EOF
+set -euo pipefail
+cd /opt/{{CODE}}/$APP
+TAG=$sha docker compose up -d 2>&1 | tail -1
+st=starting
+for i in \$(seq 1 20); do
+  st=\$(docker inspect -f '{{.State.Health.Status}}' "$SHORT" 2>/dev/null || echo starting)
+  [ "\$st" = healthy ] && break; sleep 3
+done
+echo "container health: \$st"
+[ "\$st" = healthy ] || exit 1
+docker system prune -f >/dev/null
+EOF
+
+echo "· live URL through Access"
+code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$APP/" || true)
+loc=$(curl -s -o /dev/null -w '%{redirect_url}' --max-time 15 "https://$APP/" || true)
+case "$code" in
+  302) echo "$loc" | grep -q cloudflareaccess.com || { echo "302 to unexpected location: $loc"; exit 1; } ;;
+  200) echo "WARNING: 200 unauthenticated — Access is not gating this hostname"; exit 1 ;;
+  *)   echo "unexpected HTTP $code from https://$APP/"; exit 1 ;;
+esac
+if [ -n "${ACCESS_PROBE_CLIENT_ID:-}" ]; then
+  auth=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+    -H "CF-Access-Client-Id: $ACCESS_PROBE_CLIENT_ID" \
+    -H "CF-Access-Client-Secret: $ACCESS_PROBE_CLIENT_SECRET" "https://$APP/" || true)
+  [ "$auth" = 200 ] || { echo "authenticated probe got HTTP $auth"; exit 1; }
+  echo "· deployed $sha — challenge intact, authenticated 200"
+else
+  echo "· deployed $sha — challenge intact (no probe token in pack for authenticated check)"
+fi

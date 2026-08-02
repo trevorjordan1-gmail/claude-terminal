@@ -14,7 +14,9 @@ engineer.
 
 Throughout: load the pack per-invocation (`set -a; . ./.env; set +a`); pin every image
 tag; clean up every probe object and confirm the deletion; record each component in
-STATE.md as it goes live, with IDs.
+STATE.md as it goes live, with IDs. **One stdin per remote command** (field-hit): heredoc
+OR pipe, never both — `archive | ssh 'bash -s' <<EOF` silently loses the pipe; ship
+archives as files (scp) and never `docker exec -i` inside a piped script.
 
 ## 1 · Droplet — `docker01.<CLIENT_DOMAIN>`
 

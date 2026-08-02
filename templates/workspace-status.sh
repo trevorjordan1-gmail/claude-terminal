@@ -23,6 +23,8 @@ for envfile in "$PROJECTS"/*.tools/.env; do
   # shellcheck source=/dev/null
   [ -f "$envfile" ] && { set -a; . "$envfile"; set +a; break; }
 done
+# the pack carries GITHUB_PAT, not GH_TOKEN — without this the CI check silently skips
+: "${GH_TOKEN:=${GITHUB_PAT:-}}"; export GH_TOKEN
 
 check_repo() {
   local dir="$1" name issues=""
@@ -50,7 +52,7 @@ check_repo() {
               --json status,conclusion,displayTitle \
               --jq '.[0] | "\(.status)/\(.conclusion // "-")/\(.displayTitle)"' 2>/dev/null || true)
       case "$run" in
-        "") ;;                                  # no workflows yet — fine
+        ""|null/-/null) ;;                      # no workflows / no runs yet — fine
         completed/success/*) ;;                 # green
         *) issues+="  · CI NOT GREEN: $run\n" ;;
       esac

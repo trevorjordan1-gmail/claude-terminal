@@ -40,8 +40,13 @@ backend.
 2. **CI from day one:** copy `templates/tool-ci.yml` → `.github/workflows/ci.yml`, fill the
    real test step. First push must go green before anything deploys. Dockerfile trap
    (field-hit): `node:*-slim` runtime stages ship npm/corepack with vulnerable bundled deps
-   that fail the Trivy gate — build in a builder stage, copy artifacts only, and strip
-   npm/corepack from the final image.
+   that fail the Trivy gate — build in a builder stage, copy artifacts only, and strip the
+   package managers from the final image:
+   `RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn*`
+   The app's `scripts/deploy.sh` comes from `templates/deploy.app.template.sh` — the
+   dual-path deploy (pull the CI image from GHCR; if the PAT lacks Packages, ship the
+   CI-green tree and build the identical tag on the droplet — CI stays the record either
+   way), ending with the Access-challenge + probe-token verification.
 3. **Database (if needed):** on the droplet, `cd /opt/<CLIENT_CODE>/postgres &&
    ./db-add.sh <app>` — the printed `DATABASE_URL` goes ONLY into the app's droplet `.env`
    (0600). Never reuse another app's database or credentials.
@@ -54,9 +59,11 @@ backend.
    `` traefik.http.routers.<app>.rule=Host(`<app>.<CLIENT_DOMAIN>`) `` ·
    entrypoint `web` · loadbalancer port = the container port. **No `ports:` mapping, ever.**
 6. **DNS + Access:** proxied CNAME `<app>` → `<TUNNEL_ID>.cfargotunnel.com` (the tunnel
-   config itself never changes) + a Cloudflare Access application for the hostname (client
-   staff; mirror the status app's policy unless the brief says public — public requires
-   real auth in the app first).
+   config itself never changes) + a Cloudflare Access application for the hostname with
+   the standard policy: **allow `@CLIENT_STAFF_DOMAIN` + `@<tenant>.onmicrosoft.com`,
+   nothing else** (no personal adNET emails — they can't use the client-tenant IdP), plus
+   the Service Auth policy for the probe token. Public hostnames require real auth in the
+   app first.
 7. **Backups join automatically:** the app's droplet folder + named volumes land in the
    nightly restic scope (`/opt/<CLIENT_CODE>` + volumes). If the app stores uploads,
    confirm its volume is in the backup include list — DB dumps do NOT carry files (the

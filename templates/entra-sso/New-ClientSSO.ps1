@@ -28,7 +28,12 @@
 param(
   # Short client code - names the app "<code>-sso" and the Zero Trust callback host.
   [Parameter(Mandatory)] [string]$ClientCode,
-  # Cloudflare Zero Trust team name if it differs from the client code.
+  # Cloudflare Zero Trust team name. WARNING (field-hit): Cloudflare AUTO-GENERATES team
+  # domains (e.g. hidden-resonance-c421) and the conventional short name may be taken by
+  # another customer. Look up the REAL value first:
+  #   GET https://api.cloudflare.com/client/v4/accounts/{id}/access/organizations
+  #   -> .result.auth_domain (strip ".cloudflareaccess.com")
+  # and pass it here. A wrong value = staff sign-in fails AADSTS50011.
   [string]$TeamName = $ClientCode,
   # UPN of the service account to add as OWNER of the registration (recommended:
   # object-scoped power only - lets automation add redirect URIs/secrets later without
@@ -41,6 +46,11 @@ param(
   # (pwsh): the admin enters the printed code at microsoft.com/devicelogin from their OWN
   # device, so admin credentials never touch the box running the script.
   [switch]$DeviceCode,
+  # Pre-acquired Graph access token via $env:GRAPH_TOKEN - the field-proven relay flow:
+  # mint with get-graph-token-devicecode.sh (15-min window, tenant-pinned, az-cli client)
+  # and feed it here. Preferred over -DeviceCode for relayed sign-ins (the SDK's own
+  # device-code wait is hardcoded ~120s).
+  [switch]$UseEnvToken,
   # Secret lifetime - adNET standard is 12 months (all client credentials rotate together).
   [int]$SecretMonths = 12
 )
@@ -51,8 +61,9 @@ $RedirectUri = "https://$TeamName.cloudflareaccess.com/cdn-cgi/access/callback"
 
 $scopes = @('Application.ReadWrite.All','Directory.Read.All',
             'DelegatedPermissionGrant.ReadWrite.All','AppRoleAssignment.ReadWrite.All')
-if ($DeviceCode) { Connect-MgGraph -Scopes $scopes -UseDeviceCode -NoWelcome }
-else             { Connect-MgGraph -Scopes $scopes -NoWelcome }
+if ($UseEnvToken)   { Connect-MgGraph -AccessToken (ConvertTo-SecureString $env:GRAPH_TOKEN -AsPlainText -Force) -NoWelcome }
+elseif ($DeviceCode) { Connect-MgGraph -Scopes $scopes -UseDeviceCode -NoWelcome -ClientTimeout 900 }
+else                 { Connect-MgGraph -Scopes $scopes -NoWelcome }
 $ctx = Get-MgContext
 
 # Refuse to duplicate - one registration per client, ever.

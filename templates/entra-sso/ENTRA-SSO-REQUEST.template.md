@@ -16,7 +16,7 @@ directory roles, no mailbox access, nothing tenant-wide.
 
 ```powershell
 Install-Module Microsoft.Graph -Scope CurrentUser   # if not present
-./New-ClientSSO.ps1 -ClientCode {{CLIENT_CODE}} -AiopsUpn {{AIOPS_UPN}}
+./New-ClientSSO.ps1 -ClientCode {{CLIENT_CODE}} -TeamName {{TEAM_DOMAIN_PREFIX}} -AiopsUpn {{AIOPS_UPN}}
 ```
 
 It creates the registration, grants the sign-in permissions, and prints three values to
@@ -27,7 +27,8 @@ hand back. Done.
 Entra admin center → App registrations → **New registration**:
 
 1. Name **`{{CLIENT_CODE}}-sso`** · single tenant · platform **Web**, redirect URI
-   `https://{{CLIENT_CODE}}.cloudflareaccess.com/cdn-cgi/access/callback`
+   `https://{{TEAM_DOMAIN_PREFIX}}.cloudflareaccess.com/cdn-cgi/access/callback`
+   _(exact value — we've pre-filled our real access domain here)_
 2. API permissions → Microsoft Graph → **Delegated**: `openid`, `profile`, `email`,
    `offline_access` → **Grant admin consent**
    _(These only let the sign-in flow confirm who a user is — name and email. We never see
