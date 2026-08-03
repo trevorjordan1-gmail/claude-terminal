@@ -18,7 +18,13 @@ fi
 
 if [ -d "$DEST/.git" ]; then
     echo "[get] updating existing checkout at $DEST"
-    git -C "$DEST" pull --ff-only
+    # Upstream history has been rewritten at least once (2026-08), so a plain
+    # ff-only pull can fail on older checkouts — self-heal instead of dying.
+    if ! git -C "$DEST" pull --ff-only; then
+        echo "[get] fast-forward failed (upstream history rewritten?) — resetting to origin/main"
+        git -C "$DEST" fetch origin
+        git -C "$DEST" reset --hard origin/main
+    fi
 else
     echo "[get] cloning to $DEST"
     git clone "$REPO_URL" "$DEST"
