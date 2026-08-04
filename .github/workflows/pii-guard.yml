@@ -1,0 +1,50 @@
+# pii-guard — tripwire, not prevention: fails the push (GitHub emails the owner)
+# when history carries a wrong author identity or a string from the private
+# denylist. The denylist lives in the PII_PATTERNS repo secret (one grep -E
+# pattern per line) so the patterns themselves never appear in this public
+# repo — and on a hit this job prints commit SHAs only, never the matched text,
+# because public Actions logs are world-readable.
+name: pii-guard
+
+on: [push]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Author identity check (full history)
+        run: |
+          bad=$(git log --all --format='%h %ae %ce' \
+            | awk '$2 != "trevorjordan1@gmail.com" || $3 != "trevorjordan1@gmail.com" {print $1}')
+          if [ -n "$bad" ]; then
+            echo "::error::Commits with unexpected author/committer email: $bad"
+            echo "Fix the clone that made them: git config user.name trevorjordan1-gmail; git config user.email trevorjordan1@gmail.com — then rewrite these commits."
+            exit 1
+          fi
+          echo "author check clean"
+
+      - name: Private denylist scan (diffs + messages, full history)
+        env:
+          PII_PATTERNS: ${{ secrets.PII_PATTERNS }}
+        run: |
+          if [ -z "$PII_PATTERNS" ]; then
+            echo "PII_PATTERNS secret not set — skipping (expected on forks)."
+            exit 0
+          fi
+          printf '%s\n' "$PII_PATTERNS" > "$RUNNER_TEMP/patterns"
+          hits=0
+          while read -r commit; do
+            if git show "$commit" --format='%B' | grep -qiEf "$RUNNER_TEMP/patterns"; then
+              echo "::error::Denylist hit in commit $commit (diff or message) — scan it locally; matched text is never printed here."
+              hits=1
+            fi
+          done < <(git rev-list --all)
+          [ "$hits" -eq 0 ] && echo "denylist scan clean"
+          exit "$hits"
