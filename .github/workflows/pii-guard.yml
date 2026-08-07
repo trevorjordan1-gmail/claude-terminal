@@ -1,15 +1,28 @@
-# pii-guard — tripwire, not prevention: fails the push (GitHub emails the owner)
-# when history carries a wrong author identity or a string from the private
-# denylist. The denylist lives in the PII_PATTERNS repo secret (one grep -E
-# pattern per line) so the patterns themselves never appear in this public
-# repo — and on a hit this job prints commit SHAs only, never the matched text,
-# because public Actions logs are world-readable.
+# pii-guard — two protections on every push:
+#
+# 1. Author identity: pushes to main whose commits carry any author/committer
+#    other than the repo owner are REWRITTEN in place (mailmap + force-push) —
+#    the owner sometimes commits from a box whose global git identity differs.
+#    Dev clones then need a one-time `git fetch && git reset --hard origin/main`
+#    (get.sh does this automatically on bootstrapped boxes). Pushes made with
+#    the workflow's own token don't re-trigger workflows, so this cannot loop.
+#    On non-main branches this fails instead of fixing.
+#
+# 2. Private denylist: fails the run (GitHub emails the owner) when any commit's
+#    diff or message matches a pattern from the PII_PATTERNS repo secret (one
+#    grep -E pattern per line). Patterns live only in that secret, and on a hit
+#    this job prints commit SHAs only, never the matched text, because public
+#    Actions logs are world-readable.
 name: pii-guard
 
 on: [push]
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: pii-guard-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   scan:
@@ -19,16 +32,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Author identity check (full history)
+      - name: Author identity — auto-fix on main, fail elsewhere
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          bad=$(git log --all --format='%h %ae %ce' \
-            | awk '$2 != "trevorjordan1@gmail.com" || $3 != "trevorjordan1@gmail.com" {print $1}')
-          if [ -n "$bad" ]; then
-            echo "::error::Commits with unexpected author/committer email: $bad"
-            echo "Fix the clone that made them: git config user.name trevorjordan1-gmail; git config user.email trevorjordan1@gmail.com — then rewrite these commits."
+          bad=$(git log --format='%ae%n%ce' HEAD | sort -u | grep -vx 'trevorjordan1@gmail.com' || true)
+          if [ -z "$bad" ]; then
+            echo "author check clean"
+            exit 0
+          fi
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Commits with unexpected author/committer on this branch. Fix the clone that made them: git config user.name trevorjordan1-gmail; git config user.email trevorjordan1@gmail.com"
             exit 1
           fi
-          echo "author check clean"
+          echo "::notice::Unexpected author/committer identities found — rewriting to trevorjordan1-gmail and force-pushing."
+          pip install --quiet git-filter-repo
+          while read -r e; do
+            printf 'trevorjordan1-gmail <trevorjordan1@gmail.com> <%s>\n' "$e"
+          done <<< "$bad" > "$RUNNER_TEMP/mailmap"
+          git filter-repo --force --mailmap "$RUNNER_TEMP/mailmap"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+          echo "::notice::History rewritten. Dev clones: git fetch && git reset --hard origin/main"
 
       - name: Private denylist scan (diffs + messages, full history)
         env:
