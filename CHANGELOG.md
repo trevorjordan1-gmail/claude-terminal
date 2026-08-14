@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-08-14
+
+- **The aiops mail rider — terminals can now use email.** New
+  `templates/aiops-mail.sh`: send and read mail AS the client's
+  `aiops@<clientdomain>` mailbox via Microsoft Graph (users mail the terminal,
+  the terminal mails them back). Rides the ONE `<code>-sso` registration —
+  delegated Mail.Read/ReadWrite/Send consented **Principal-scoped to the aiops
+  account only** (no other mailbox in the tenant is reachable, by construction)
+  with the public-client fallback on, so the terminal signs in by device code
+  and no client secret sits on the mail path. `New-ClientSSO.ps1` creates all
+  of it inline when `-AiopsUpn` is given; new `Grant-AiopsMail.ps1` retrofits
+  registrations that predate the rider (idempotent, same relay flow). The tool
+  has an identity guard — if anyone but aiops completes the device-code
+  sign-in, the token is dropped on the spot — and a `verify` command that
+  proves the channel with a self-send round trip and deletes its own probe.
+  SETUP gains step 6 (install + login + verify; join-mode terminals log in
+  per-machine — the token cache never travels); STATE template records the
+  probe result and the token's lifecycle; the external-IT one-pager now names
+  the mail permissions honestly (delegated, exercised only by the service
+  account we created, on its own mailbox — still nothing tenant-wide).
+- **Issues RW joins the fine-grained PAT set** (field-found at the first AI
+  Build engagement: the terminals plan and work the repo tracker, not just the
+  code). `pack-verify.sh` now proves it empirically — an issue is created in
+  the probe repo before deletion — and tells a token minted before the change
+  exactly what to add. Guide §4 and the onboarding templates carry the new set.
+- `pack-verify.sh` notes `AIOPS_UPN` when absent (the mail tool's expected
+  identity; login still works without it, minus the mismatch guard).
+
 ## 2026-07-31
 
 - New `windows/` directory: host-side Hyper-V tooling, covering the one step

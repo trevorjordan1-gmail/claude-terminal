@@ -35,6 +35,7 @@ blocked on whom.}}
 |---|---|
 | `scripts/workspace-status.sh` | {{clean / findings}} |
 | Credential pack (writes probed) | {{n/n providers}} |
+| aiops mail (`aiops-mail.sh verify` round trip) | {{PASS / pending ENTRA_*}} |
 | {{platform-verify.sh once stage 4 runs — port scan, isolation, silent-alarm, restore drill}} | |
 
 ## Live components
@@ -62,9 +63,10 @@ never vaulted — regenerable from the logins.
 |---|---|---|---|
 | Cloudflare token | {{CLIENT_CODE}}-cct01 {{BUILDER_NAME}} | {{date — CF max 1 yr}} | identify by ID: {{id}} |
 | DigitalOcean token | 〃 | {{date}} | full-access, 1 yr |
-| GitHub machine PAT | 〃 | {{date}} | fine-grained, org-scoped, all-RW set |
+| GitHub machine PAT | 〃 | {{date}} | fine-grained, org-scoped, all-RW set (incl. Issues) |
 | Wasabi root keys | — | — | ⚠ billing session must land inside the 30-day trial |
 | Healthchecks keys | — | — | management + read-only (status page uses RO) |
+| aiops mail token | this terminal | renews with use | device-code as aiops; re-`login` if it lapses — no admin needed |
 
 ## Next actions (resume point)
 

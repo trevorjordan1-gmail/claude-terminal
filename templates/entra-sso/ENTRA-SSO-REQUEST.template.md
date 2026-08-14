@@ -8,7 +8,10 @@ sign in with their **normal Microsoft 365 accounts** (your MFA and conditional-a
 policies apply automatically; disabling a user in Entra revokes their tool access), we need
 **one app registration** created in the {{CLIENT_NAME}} tenant. This is a one-time,
 ~10-minute action, and it is the ONLY thing we will ever ask for in your tenant — no
-directory roles, no mailbox access, nothing tenant-wide.
+directory roles, no access to any of your users' mailboxes, nothing tenant-wide. (The one
+mailbox involved anywhere below is the **Ai Ops service account's own** — the
+`{{AIOPS_UPN}}` account we created and operate for this program; it is how the platform
+sends and receives its program email.)
 
 ## Easiest path — run the attached script
 
@@ -19,8 +22,9 @@ Install-Module Microsoft.Graph -Scope CurrentUser   # if not present
 ./New-ClientSSO.ps1 -ClientCode {{CLIENT_CODE}} -TeamName {{TEAM_DOMAIN_PREFIX}} -AiopsUpn {{AIOPS_UPN}}
 ```
 
-It creates the registration, grants the sign-in permissions, and prints three values to
-hand back. Done.
+It creates the registration, grants the sign-in permissions, consents the mail permissions
+**for the Ai Ops service account only** (a per-user grant — no other mailbox is reachable
+through this app, by construction), and prints three values to hand back. Done.
 
 ## Or by hand (identical result)
 
@@ -32,12 +36,23 @@ Entra admin center → App registrations → **New registration**:
 2. API permissions → Microsoft Graph → **Delegated**: `openid`, `profile`, `email`,
    `offline_access` → **Grant admin consent**
    _(These only let the sign-in flow confirm who a user is — name and email. We never see
-   passwords; nothing can read mail, files, or the directory.)_
-3. **Owners** → add **`{{AIOPS_UPN}}`** — recommended, not required. Owners can maintain
+   passwords; nothing can read files or the directory.)_
+3. API permissions → Microsoft Graph → **Delegated**: `Mail.Read`, `Mail.ReadWrite`,
+   `Mail.Send`.
+   _(Delegated — not application — permissions: they work only for an account that itself
+   signs in to this app, and the only account that ever does that for mail is
+   `{{AIOPS_UPN}}`, on its own mailbox. Your users' mailboxes are not reachable. If you
+   prefer the grant pinned to that one account cryptographically rather than by usage, run
+   the attached script instead — it writes a per-user consent grant, which the portal UI
+   cannot express._)
+4. Authentication → **Allow public client flows** → **Yes**
+   _(lets the service account sign in with a device code from its terminal — no secret is
+   stored on the mail path)._
+5. **Owners** → add **`{{AIOPS_UPN}}`** — recommended, not required. Owners can maintain
    THIS object only (add a redirect URI when a new internal tool launches, rotate its
    secrets) — it is not a directory role and grants nothing else. Skip it and we'll simply
    send you a 60-second change request when needed.
-4. Certificates & secrets → **New client secret** · description `cloudflare-access` ·
+6. Certificates & secrets → **New client secret** · description `cloudflare-access` ·
    **12 months**.
 
 ## Hand back

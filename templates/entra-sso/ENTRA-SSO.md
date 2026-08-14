@@ -70,6 +70,29 @@ call or one-time link, never plain email).
    reaches the app; the service-token probe still returns 200; email-OTP still works for
    the engineer. Record the drill in STATE.md.
 
+## The aiops MAIL RIDER — the terminal's email channel
+
+The same registration carries the terminal's ability to **send and read mail as
+`aiops@<clientdomain>`** (users mail the terminal, the terminal mails them back —
+`templates/aiops-mail.sh`, wired at SETUP step 6). What it is, exactly:
+
+- **Delegated** `Mail.Read` / `Mail.ReadWrite` / `Mail.Send` — never application
+  permissions, so the scopes work only for an account that itself signs in, and consent is
+  written **Principal-scoped to aiops alone**: no other mailbox in the tenant is reachable
+  through this app, by construction.
+- **Public-client fallback ON** — the terminal signs in with a device code (as aiops, Hudu
+  creds + TOTP); no client secret ever sits on the mail path. The Access web flow keeps
+  its own secret and is untouched.
+- **Created by:** `New-ClientSSO.ps1` inline (since 2026-08, when `-AiopsUpn` is given).
+  **Retrofit for registrations that predate it:** `Grant-AiopsMail.ps1` — idempotent,
+  same relay flow (`get-graph-token-devicecode.sh` → `-UseEnvToken`) when Claude runs it
+  on the terminal. External IT: the one-pager's by-hand path includes the mail
+  permissions; their portal consent is tenant-standard admin consent — the script's
+  per-user grant is tighter, offer it first.
+- **Token lifecycle:** the device-code refresh token lives per-terminal at
+  `~/.config/adnet/` (0600) and renews itself with use; if it lapses (long idle, CA policy
+  change), `aiops-mail.sh login` again — two minutes, no admin needed.
+
 ## Later — a Pattern-B app is born (NEW-APP decides)
 
 Never a new registration: add the app's redirect URI + mint a secret labeled `<app>` on

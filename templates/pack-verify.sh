@@ -46,7 +46,8 @@ for v in DO_TOKEN_EXPIRES CF_TOKEN_ID CF_TOKEN_EXPIRES GITHUB_PAT_EXPIRES \
   [ -n "${!v:-}" ] || echo "  (note: $v empty — expiry/ID is only on screen at mint time)"
 done
 for v in CLIENT_LOCATION CLIENT_STAFF_DOMAIN CLIENT_ALERT_EMAILS ADNET_ALERTS_MAILBOX \
-         TEAM_DOMAIN ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_CLIENT_SECRET GITHUB_CLASSIC; do
+         TEAM_DOMAIN ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_CLIENT_SECRET GITHUB_CLASSIC \
+         AIOPS_UPN; do
   [ -n "${!v:-}" ] || echo "  (note: $v empty — the platform build will need a judgment call or fallback)"
 done
 # GITHUB_CLASSIC = classic PAT, read:packages ONLY — ghcr.io refuses fine-grained PATs;
@@ -95,13 +96,24 @@ if ! curl -sf "${AUTH[@]}" "$GH/orgs/$GITHUB_ORG" >/dev/null; then
   bad "GitHub — org $GITHUB_ORG not reachable with this PAT (slug wrong, or org PAT policy not set)"
 else
   R="$CLIENT_CODE-pack-probe-$STAMP"
-  if curl -sf "${AUTH[@]}" -d "{\"name\":\"$R\",\"private\":true}" "$GH/orgs/$GITHUB_ORG/repos" >/dev/null \
-     && curl -sf -X DELETE "${AUTH[@]}" "$GH/repos/$GITHUB_ORG/$R" \
-     && [ "$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$GH/repos/$GITHUB_ORG/$R")" = 404 ]; then
-    ok "GitHub — private repo create/delete in $GITHUB_ORG (deletion confirmed 404)"
+  if curl -sf "${AUTH[@]}" -d "{\"name\":\"$R\",\"private\":true}" "$GH/orgs/$GITHUB_ORG/repos" >/dev/null; then
+    # Issues RW joined the §4 permission set 2026-08 (field-found: the terminals work the
+    # tracker, not just the code) — prove it with a real issue; it dies with the repo.
+    if curl -sf "${AUTH[@]}" -d '{"title":"pack probe — deleted with this repo"}' \
+         "$GH/repos/$GITHUB_ORG/$R/issues" >/dev/null; then
+      ok "GitHub — issue created in the probe repo (Issues RW proven)"
+    else
+      bad "GitHub — issue create REFUSED (PAT minted before Issues RW joined §4 — edit the token: add Issues RW)"
+    fi
+    if curl -sf -X DELETE "${AUTH[@]}" "$GH/repos/$GITHUB_ORG/$R" \
+       && [ "$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$GH/repos/$GITHUB_ORG/$R")" = 404 ]; then
+      ok "GitHub — private repo create/delete in $GITHUB_ORG (deletion confirmed 404)"
+    else
+      bad "GitHub — repo delete in $GITHUB_ORG ($R may remain — delete by hand)"
+      curl -s -X DELETE "${AUTH[@]}" "$GH/repos/$GITHUB_ORG/$R" >/dev/null 2>&1 || true
+    fi
   else
-    bad "GitHub — repo lifecycle in $GITHUB_ORG (PAT needs Contents+Administration RW)"
-    curl -s -X DELETE "${AUTH[@]}" "$GH/repos/$GITHUB_ORG/$R" >/dev/null 2>&1 || true
+    bad "GitHub — repo create in $GITHUB_ORG (PAT needs Contents+Administration RW)"
   fi
 fi
 

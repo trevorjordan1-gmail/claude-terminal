@@ -38,8 +38,8 @@ Then, in order:
      - `.gitignore` — `.env`, `os-changes` never applies here (it lives outside), and the
        nested app folders: `*.<CLIENT_DOMAIN>/` (each app is its OWN repo — the platform
        repo must never swallow one)
-     - `scripts/` ← copy `templates/workspace-status.sh` + `templates/pack-verify.sh`
-       (+ make executable)
+     - `scripts/` ← copy `templates/workspace-status.sh` + `templates/pack-verify.sh` +
+       `templates/aiops-mail.sh` (+ make executable)
    - `~/Projects/os-changes/` and `~/Projects/misc/` — create if missing (the launcher
      stamps their CLAUDE/README files; you may stamp them now using the same content).
 2. **Move the keys home:** `mv ~/Projects/.env ~/Projects/<CLIENT_DOMAIN>/.env && chmod 600` —
@@ -61,7 +61,20 @@ Then, in order:
    `RESTIC_PASSWORD_CCT` (the Cloudflare lesson: a token can succeed on GET while holding
    no write permission at all). It cleans up its own probe objects and its output is
    paste-ready for STATE.md's verified table. Investigate any FAIL before continuing.
-6. **Close the loop:** update `STATE.md` (what exists now, what's verified, next = platform
+6. **aiops mail — the terminal's email channel** (users mail the terminal at
+   `aiops@<client mail domain>`; the terminal mails them back):
+   - If `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` are in the pack: run
+     `scripts/aiops-mail.sh login` and RELAY the printed device code to the engineer — they
+     sign in **AS the aiops account** (creds + TOTP from Hudu; the tool refuses and drops
+     the token if any other identity signs in). Then `scripts/aiops-mail.sh verify` — a
+     self-send round-trip probe that cleans up after itself; its PASS lines go in STATE.md.
+   - If `ENTRA_*` hasn't landed (external-IT lead time): record "aiops mail pending ENTRA_*"
+     in STATE.md and continue — nothing blocks; run login+verify when the values land.
+   - If login fails with AADSTS65001 (consent) or AADSTS7000218 (public client): the
+     registration predates the mail rider — the engineer runs
+     `templates/entra-sso/Grant-AiopsMail.ps1` (or relays it to whoever holds the tenant),
+     then login again.
+7. **Close the loop:** update `STATE.md` (what exists now, what's verified, next = platform
    build), commit, push, then run `scripts/workspace-status.sh` — it must come back clean.
    Report to the engineer in plain language: what was built, what was verified, what's next.
 
@@ -84,6 +97,8 @@ changes shape:
 - **Register the terminal:** STATE.md's VM↔builder map gains this machine (hostname,
   builder, token names + expiries). Commit + push.
 - `pack-verify.sh` runs the same — it proves the NEW tokens, not the first terminal's.
+- **aiops mail is per-terminal too:** the token cache never travels — run
+  `scripts/aiops-mail.sh login` + `verify` on THIS machine (step 6 above, same relay).
 
 ## What you do NOT do here
 

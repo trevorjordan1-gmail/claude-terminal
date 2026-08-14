@@ -1,8 +1,12 @@
 <#
 .SYNOPSIS
   Creates the one-per-client "<code>-sso" Entra app registration - the single object that
-  serves Cloudflare Access sign-in today and any future direct-SSO app (redirect URIs and
-  per-app secrets get added to this same registration; no second registration, ever).
+  serves Cloudflare Access sign-in today, any future direct-SSO app (redirect URIs and
+  per-app secrets get added to this same registration; no second registration, ever), and
+  the aiops MAIL RIDER: delegated Mail.Read/ReadWrite/Send consented for the aiops account
+  ONLY, public-client device-code enabled - the Claude Code Terminals send and read mail
+  as aiops@<clientdomain> through it (templates/aiops-mail.sh). Retrofit an existing
+  registration with Grant-AiopsMail.ps1.
 
 .DESCRIPTION
   Run by a Global Administrator (or Privileged Role Admin + Application Admin) of the
@@ -72,8 +76,12 @@ if (Get-MgApplication -Filter "displayName eq '$AppName'" -Top 1) {
 }
 
 # Resolve Microsoft Graph's service principal + permission IDs dynamically (no hardcoded GUIDs).
+# Declared delegated set = the sign-in scopes + the aiops MAIL RIDER (Mail.*). Declaration
+# is portal visibility only - the mail scopes are CONSENTED Principal-scoped to the aiops
+# account alone (step 2 below), never tenant-wide: no other user's mailbox is ever reachable.
 $graphSp = Get-MgServicePrincipal -Filter "appId eq '00000003-0000-0000-c000-000000000000'"
-$delegated = 'openid','profile','email','offline_access' | ForEach-Object {
+$delegated = 'openid','profile','email','offline_access',
+             'Mail.Read','Mail.ReadWrite','Mail.Send' | ForEach-Object {
   $v = $_; $s = $graphSp.Oauth2PermissionScopes | Where-Object Value -eq $v
   if (-not $s) { throw "Graph scope '$v' not found" }
   @{ Id = $s.Id; Type = 'Scope' }
@@ -84,9 +92,12 @@ if ($IncludeOwnedBy) {
   $resourceAccess += @{ Id = $role.Id; Type = 'Role' }
 }
 
-# 1 - the registration - single tenant, web redirect = the Zero Trust callback
+# 1 - the registration - single tenant, web redirect = the Zero Trust callback.
+# IsFallbackPublicClient: lets the terminal's aiops-mail tool use the device-code flow
+# (no secret on the mail path); the CF Access web flow keeps using its own secret.
 $app = New-MgApplication -DisplayName $AppName -SignInAudience 'AzureADMyOrg' `
   -Web @{ RedirectUris = @($RedirectUri) } `
+  -IsFallbackPublicClient:$true `
   -RequiredResourceAccess @(@{ ResourceAppId = $graphSp.AppId; ResourceAccess = $resourceAccess })
 $sp = New-MgServicePrincipal -AppId $app.AppId
 Write-Host "Created $AppName  (appId $($app.AppId))"
@@ -99,6 +110,24 @@ New-MgOauth2PermissionGrant -BodyParameter @{
   scope       = 'openid profile email offline_access'
 } | Out-Null
 Write-Host 'Granted admin consent: openid profile email offline_access'
+
+# 2b - the aiops mail rider: Mail.* consented for the aiops PRINCIPAL only - the terminal
+# sends/reads mail as aiops@<clientdomain> (aiops-mail.sh, device code); this grant shape
+# means no other account can ever ride these scopes through this app.
+$aiops = $null
+if ($AiopsUpn) {
+  $aiops = Get-MgUser -UserId $AiopsUpn
+  New-MgOauth2PermissionGrant -BodyParameter @{
+    clientId    = $sp.Id
+    consentType = 'Principal'
+    principalId = $aiops.Id
+    resourceId  = $graphSp.Id
+    scope       = 'openid profile email offline_access Mail.Read Mail.ReadWrite Mail.Send'
+  } | Out-Null
+  Write-Host "Granted mail consent for $AiopsUpn ONLY (Mail.Read/ReadWrite/Send - its own mailbox; nothing tenant-wide)"
+} else {
+  Write-Host 'NOTE: -AiopsUpn omitted - mail scopes are declared but UNCONSENTED. Run Grant-AiopsMail.ps1 when the aiops account exists.'
+}
 if ($IncludeOwnedBy) {
   $role = $graphSp.AppRoles | Where-Object Value -eq 'Application.ReadWrite.OwnedBy'
   New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -BodyParameter @{
@@ -107,8 +136,7 @@ if ($IncludeOwnedBy) {
 }
 
 # 3 - owner (object-scoped control - no directory roles anywhere)
-if ($AiopsUpn) {
-  $aiops = Get-MgUser -UserId $AiopsUpn
+if ($aiops) {
   $ref = @{ '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($aiops.Id)" }
   New-MgApplicationOwnerByRef -ApplicationId $app.Id -BodyParameter $ref
   New-MgServicePrincipalOwnerByRef -ServicePrincipalId $sp.Id -BodyParameter $ref

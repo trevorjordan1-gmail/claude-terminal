@@ -96,7 +96,7 @@ git diff --cached | grep -qE "$pat" && { echo "ABORT: live secret in staged diff
 ├── {{CLIENT_DOMAIN}}/          ← YOU ARE HERE — platform repo + launch root (cc lands here)
 │   ├── CLAUDE.md · STATE.md    contract + living resume point
 │   ├── .env                    the pack (0600, never committed)
-│   ├── scripts/                workspace-status.sh + platform helpers
+│   ├── scripts/                workspace-status.sh · aiops-mail.sh + platform helpers
 │   ├── edge/ · postgres/       platform stacks (arrive at PLATFORM BUILD; droplet copies
 │   │                           live at /opt/{{CLIENT_CODE}}/…)
 │   └── <app>.{{CLIENT_DOMAIN}}/  one folder PER APP — each its OWN repo (gitignored here)
@@ -107,6 +107,13 @@ git diff --cached | grep -qE "$pat" && { echo "ABORT: live secret in staged diff
 - New app? Follow `~/claude-terminal/templates/NEW-APP.md` — repo in {{GITHUB_ORG}}, CI from
   day one, container on docker01, tunnel hostname + Access, backup hook, Healthchecks check,
   STATE.md entry. Folder name == repo name == subdomain, always.
+- **Email, as the program's own address:** `scripts/aiops-mail.sh` sends and reads mail as
+  the client's `aiops@` mailbox (`send` / `list` / `read` / `verify` — `help` for all).
+  Users mail work to the terminal; you mail results back. Discipline: you are writing as
+  the client's Ai Ops address — professional tone, never a secret/credential/token in a
+  mail body, attachments ≤ 3 MB (share a link past that), and log significant sends in the
+  session report. Check the inbox when the builder says they've mailed you something —
+  there is no push; `list --unread` is the pull.
 - OS-level change on this terminal? Log it in `~/Projects/os-changes/README.md` (top row,
   with how to undo it).
 
