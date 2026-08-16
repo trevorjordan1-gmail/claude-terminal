@@ -26,8 +26,10 @@ for pkg in git gh tmux curl jq unzip lynx xvfb openssh-server; do
     if pkg_installed "$pkg"; then p "apt: $pkg"; else f "apt: $pkg missing"; fi
 done
 
+# Cloud AMIs can ship /etc/sudoers.d closed to non-root (0750), so fall back
+# to a prompt-free sudo read — NOPASSWD working is itself the thing checked.
 sudoers_rule="/etc/sudoers.d/010-$(id -un | tr '.' '_')-nopasswd"
-if [ -s "$sudoers_rule" ]; then
+if [ -s "$sudoers_rule" ] || sudo -n test -s "$sudoers_rule" 2>/dev/null; then
     p "passwordless sudo rule present"
 else
     f "passwordless sudo rule missing or empty ($sudoers_rule)"
@@ -55,6 +57,18 @@ if have claude; then
     if claude_ready; then p "claude logged in"; else s "claude not logged in yet (run 'claude')"; fi
 else
     f "claude not on PATH"
+fi
+
+if grep -qE 'PATH=.*\.local/bin' "$HOME/.bashrc" 2>/dev/null; then
+    p ".bashrc puts ~/.local/bin on PATH (claude reachable without a login shell)"
+else
+    f ".bashrc does not export ~/.local/bin — claude off PATH in DCV/cloud sessions"
+fi
+
+if [ -x "$HOME/.local/bin/cct-finish" ] && grep -q 'claude-terminal postlogin-finish' "$HOME/.bashrc" 2>/dev/null; then
+    p "cct-finish + post-login hook installed"
+else
+    f "cct-finish or its .bashrc hook missing (re-run ./bootstrap.sh)"
 fi
 
 if [ -x "$HOME/.bun/bin/bun" ]; then p "bun $("$HOME/.bun/bin/bun" --version)"; else f "bun missing"; fi
@@ -117,14 +131,16 @@ else
     s "no GNOME desktop on this box — GNOME checks skipped"
 fi
 
-if [ -d /etc/gdm3 ]; then
+if is_dcv_terminal; then
+    s "DCV terminal — host owns session config (GDM not in use) — Wayland check n/a"
+elif [ -d /etc/gdm3 ]; then
     if grep -qE '^WaylandEnable=false' /etc/gdm3/custom.conf 2>/dev/null; then
         p "Wayland disabled at GDM (X11 forced)"
     else
         f "WaylandEnable=false not set in /etc/gdm3/custom.conf (RustDesk/Splashtop need X11)"
     fi
 else
-    s "no GDM on this box (session comes from DCV/xrdp/etc.) — Wayland check n/a"
+    s "no GDM on this box (session comes from xrdp/etc.) — Wayland check n/a"
 fi
 
 if [ "$(systemd-detect-virt 2>/dev/null)" = "microsoft" ]; then

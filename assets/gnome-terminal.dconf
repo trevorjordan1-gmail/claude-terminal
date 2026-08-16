@@ -15,5 +15,7 @@ bold-is-bright=true
 default-size-columns=200
 default-size-rows=50
 foreground-color='rgb(211,215,207)'
-use-theme-colors=true
+# false: apply the recorded dark colors explicitly, so the terminal is dark
+# even where the host's system style is light (cloud/DCV fleets).
+use-theme-colors=false
 use-theme-transparency=true

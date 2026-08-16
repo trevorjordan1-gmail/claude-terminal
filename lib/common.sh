@@ -110,3 +110,11 @@ gui_conf_ready() { ensure_user_dbus || have dbus-run-session; }
 claude_ready() {
     have claude && [ -f "$HOME/.claude/.credentials.json" ]
 }
+
+# True on a DCV/cloud terminal: the fleet provisioner drops
+# /etc/asp-terminal.env; the DCV server package is the fallback signal.
+# On these boxes the host owns session/login config (GDM is not in use) —
+# gate anything GDM/lock/login-shaped behind this.
+is_dcv_terminal() {
+    [ -f /etc/asp-terminal.env ] || pkg_installed nice-dcv-server
+}

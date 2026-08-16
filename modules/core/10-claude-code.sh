@@ -8,6 +8,9 @@ if ! have claude; then
 fi
 
 append_block "$HOME/.bashrc" "claude-terminal aliases" <<'EOF'
+# DCV/cloud sessions skip the login-shell pass through ~/.profile, so the
+# claude install dir must go on PATH here in .bashrc.
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
 alias cc='claude --dangerously-skip-permissions'
 alias phonecc='tmux new-session -A -s claude claude --dangerously-skip-permissions'
 EOF

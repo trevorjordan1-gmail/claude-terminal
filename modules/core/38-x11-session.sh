@@ -5,6 +5,12 @@
 # Wayland, and the Hyper-V scroll fix is an Xorg InputClass. Both reference
 # machines run with WaylandEnable=false.
 
+# DCV terminals: the fleet host owns all session config and GDM is not in
+# use — DCV brings its own X server, so forcing X11 at GDM is moot. Leave it.
+if is_dcv_terminal; then
+    skip "DCV terminal — host owns session config (GDM not in use)"
+fi
+
 CONF=/etc/gdm3/custom.conf
 [ -d /etc/gdm3 ] || skip "no GDM here (/etc/gdm3 missing)"
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-08-15 (later) — DCV/cloud terminals become a first-class platform
+
+- **New platform gate `is_dcv_terminal`** (`/etc/asp-terminal.env` or the DCV
+  server package): on DCV fleet boxes the host owns session/login config, so
+  `38-x11-session` and verify.sh's Wayland check now skip there instead of
+  fighting it (GDM is not in use; DCV brings its own X server). Hyper-V and
+  Splashtop gating unchanged.
+- **New `27-postlogin-finish` + `tools/cct-finish.sh`**: headless provisions
+  end before `claude` login and cloud users never see the "re-run bootstrap
+  after login" reminder — now the first interactive shell where claude is
+  logged in but the plugins are missing runs `cct-finish` automatically,
+  which executes just the login-gated modules (claude-mem, superpowers; no
+  sudo, no apt). Also runnable by hand any time.
+- **`~/.local/bin` now exported in `.bashrc`** (10-claude-code's block):
+  DCV/cloud sessions never pass through a login shell, so `~/.profile`'s
+  PATH addition doesn't apply and `claude` was off PATH in terminals.
+- verify.sh: sudoers check falls back to a prompt-free `sudo -n` read (cloud
+  AMIs can ship `/etc/sudoers.d` closed to non-root at 0750); new checks for
+  the `.bashrc` PATH export and cct-finish hook.
+- `assets/gnome-terminal.dconf`: `use-theme-colors=false` — the recorded dark
+  colors now apply explicitly, so seeded terminals are dark even where the
+  host's system style is light. Seed-only as ever: no existing box changes.
+
 ## 2026-08-15
 
 - **GNOME settings now apply on headless provisions** (cloud/DCV terminals,

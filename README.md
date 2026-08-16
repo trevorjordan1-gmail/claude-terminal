@@ -101,8 +101,9 @@ nothing persists past that console window.
 | 15-bun | Bun runtime (claude-mem v10's worker needs it) |
 | 20-claude-mem | [claude-mem](https://github.com/thedotmack/claude-mem) persistent memory, v10 plugin |
 | 25-superpowers | [superpowers](https://github.com/obra/superpowers) skills plugin |
+| 27-postlogin-finish | installs `cct-finish` + a `.bashrc` hook: the first shell after `claude` login finishes the plugin installs automatically (headless/cloud provisions never see the "re-run after login" reminder) |
 | 30-uv | uv/uvx (Chroma MCP server runs through it) |
-| 38-x11-session | forces X11 (Wayland off at GDM) — RustDesk/Splashtop can't inject input on Wayland |
+| 38-x11-session | forces X11 (Wayland off at GDM) — RustDesk/Splashtop can't inject input on Wayland (skipped on DCV terminals, where the host owns session config) |
 | 40-gnome-qol | screen lock off, idle blanking off; dock = Firefox, Files, Terminal (App Center and Help unpinned) |
 | 41-splashtop-cursorfix | works around a Splashtop ≤3.8.0.0 crash: static cursors (host + snap themes), no Firefox launch spinner, LD_PRELOAD shim on the streamer (only runs where Splashtop is installed) |
 | 42-terminal-prefs | seeds GNOME Terminal prefs (Ctrl+C/V copy-paste, 200×50 window) on fresh boxes — never overwrites later tweaks |

@@ -61,6 +61,11 @@ Modules are **sourced inside a subshell** by `bootstrap.sh`. Rules:
    writing nothing. Reads (`gsettings get`, `dconf dump`) hit the database
    file directly and need no bus or wrapper. (`ensure_user_dbus` remains the
    lower-level SSH-session helper `gui_conf` builds on.)
+   **Platform gates:** `is_dcv_terminal` is true on DCV/cloud fleet boxes
+   (`/etc/asp-terminal.env` or the DCV server package) — gate anything
+   GDM/lock/login-shaped behind it; the host owns session config there.
+   Hyper-V stays `systemd-detect-virt` = `microsoft`, Splashtop stays
+   `pkg_installed splashtop-streamer`.
 5. **Idempotency is non-negotiable.** Re-running bootstrap is the upgrade
    path. Guard every mutation (`grep -q` before sed-insert, `pkg_installed`
    before apt, compare-before-set for gsettings).
