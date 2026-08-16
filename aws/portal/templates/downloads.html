@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>DCV client downloads</h2>
+<p class="note" style="margin:.2rem 0 1rem">These links always fetch the newest
+client build, straight from Amazon. Install once — connections launch from
+this portal afterward.</p>
+{% for d in downloads %}
+<div class="card">
+  <div class="meta">
+    <div class="name">{{ d.label }}</div>
+    <div class="sub">{% if d.version %}version {{ d.version }} (latest){% else %}latest build{% endif %}</div>
+  </div>
+  <a class="btn" href="{{ d.url }}">Download</a>
+</div>
+{% endfor %}
+<p class="note"><a href="/">&larr; back to your terminals</a></p>
+{% endblock %}

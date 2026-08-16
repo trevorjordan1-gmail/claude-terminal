@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>That didn't work</h2>
+<div class="card">
+  <div class="meta">
+    <div class="name">Couldn't connect to your terminal</div>
+    <div class="sub">{{ message }}</div>
+  </div>
+  <a class="btn" href="/">Back &amp; try again</a>
+</div>
+{% endblock %}

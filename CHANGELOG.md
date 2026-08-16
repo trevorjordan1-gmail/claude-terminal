@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-15 (even later) — the AWS/DCV platform moves in: `aws/`
+
+- This repo is now the **source of truth for the whole stack**, not just the
+  per-user kit. `aws/` carries the cloud platform the DCV fleet gate was built
+  for: Terraform tenant substrate, the Entra-login portal, provisioning +
+  operations scripts (GNOME/DCV desktop, broker/gateway/TLS control plane,
+  idle auto-pause watchdog, WU-style self-update, multi-tenant rollout), and
+  the build-a-tenant runbook with every production gotcha.
+- Tenant identity stays OUT of the repo by construction: variables have no
+  org defaults, the terraform backend is init-time config, the fleet registry
+  (`aws/tenants.json`) is git-ignored with a committed example — same "no
+  machine-specific identifiers" rule the kit has always had.
+- Notable platform behaviors baked in from the pilot: sessions run the real
+  branded Ubuntu session (dock/appindicators/Yaru — `/etc/dcv/dcvsessioninit`
+  is the init that actually runs), printing disabled by design (session
+  permissions + cups masked), file transfer both ways (storage root = home),
+  Firefox snap pinned first, dcvserver explicitly boot-enabled.
+
 ## 2026-08-15 (later) — DCV/cloud terminals become a first-class platform
 
 - **New platform gate `is_dcv_terminal`** (`/etc/asp-terminal.env` or the DCV

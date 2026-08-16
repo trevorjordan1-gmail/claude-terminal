@@ -1,0 +1,10 @@
+[
+  {
+    "name": "acme-poc",
+    "aws_profile": "acme",
+    "region": "us-east-2",
+    "artifacts_bucket": "acme-asp-artifacts-<account-id>",
+    "controlplane_id": "i-0123456789abcdef0",
+    "portal_url": "https://portal.terminals.example.com"
+  }
+]

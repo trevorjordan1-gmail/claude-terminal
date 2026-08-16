@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if banner %}<div class="banner">{{ banner }}</div>{% endif %}
+
+<h2>Idle &amp; cost settings</h2>
+<div class="card" style="flex-direction:column;align-items:stretch;gap:.6rem">
+  <form method="post" action="/admin/idle-settings" style="display:flex;flex-direction:column;gap:.6rem">
+    <label style="font-size:.9rem"><input type="checkbox" name="enabled" value="1" {{ idle.enabled and "checked" or "" }}>
+      <b>Automatically pause idle terminals</b> — paused terminals cost almost nothing
+      and resume exactly where they left off</label>
+    <label style="font-size:.9rem">Pause a terminal after
+      <select name="idle_minutes" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:.35rem">
+        {% for v, lbl in [(15, "15 minutes"), (30, "30 minutes"), (60, "1 hour"), (120, "2 hours"), (240, "4 hours"), (480, "8 hours")] %}
+        <option value="{{ v }}" {{ idle.idle_minutes == v and "selected" or "" }}>{{ lbl }}</option>
+        {% endfor %}
+      </select>
+      with nothing going on</label>
+    <label style="font-size:.9rem">What counts as "something going on":
+      <select name="sensitivity" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:.35rem">
+        <option value="conservative" {{ idle.sensitivity == "conservative" and "selected" or "" }}>Anything at all — even light background work keeps it awake (fewest interruptions)</option>
+        <option value="balanced" {{ idle.sensitivity == "balanced" and "selected" or "" }}>Real work — someone connected, Claude working, or a build running (recommended)</option>
+        <option value="aggressive" {{ idle.sensitivity == "aggressive" and "selected" or "" }}>Heavy work only — pause unless it's clearly busy (maximum savings)</option>
+      </select></label>
+    <div><button class="ghost">Save</button></div>
+  </form>
+</div>
+<p class="note" style="margin-top:-.3rem">"Claude working" means actually doing a task —
+a Claude window that's just sitting open doesn't keep the machine awake (pausing
+preserves it anyway). Per-terminal exceptions are on each terminal below.</p>
+
+<h2>Add a user</h2>
+<div class="card">
+  <form class="share" method="post" action="/admin/add" style="border:0;padding:0;margin:0">
+    <input type="email" name="owner_upn" placeholder="user email (Entra UPN)" required>
+    <input type="text" name="local_user" placeholder="linux user (optional)"
+           pattern="[a-z][a-z0-9-]{1,30}" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:.4rem .6rem;font-size:.85rem">
+    <button>Create {{ next_name }}</button>
+  </form>
+</div>
+<p class="note" style="margin-top:-.3rem">Creates the terminal ({{ next_name }}) and assigns it —
+the user signs in with their normal Microsoft account and sees only their own terminal.
+First boot takes ~15–20 minutes.</p>
+
+<h2>All terminals</h2>
+{% for m in machines %}
+<div class="card">
+  <div class="meta">
+    <div class="name">{{ m.name }}</div>
+    <div class="sub">{{ m.type }} · {{ m.owner }} · linux user: {{ m.local_user }}</div>
+  </div>
+  <span class="state {{ m.css }}">{{ m.label }}</span>
+  {% if m.css == "pending" and m.progress %}
+  <div class="prog"><div class="prog-fill" style="width:{{ m.progress.pct }}%"></div></div>
+  <div class="sub" style="width:100%">{{ m.progress.label }} — {{ m.progress.pct }}%{% if m.progress.eta_left and m.progress.pct < 100 %}, about {{ m.progress.eta_left }} min left{% endif %}</div>
+  {% elif m.css == "pending" and m.state == "running" %}
+  <div class="sub" style="width:100%">Setting up — a brand-new terminal takes 20–30 minutes</div>
+  {% endif %}
+  {% if m.css in ("paused", "stopped") %}
+    <form class="inline" method="post" action="/machines/{{ m.id }}/start">
+      <button class="ghost">{{ m.css == "paused" and "Resume" or "Start" }}</button></form>
+  {% elif m.css == "running" %}
+    <form class="inline" method="post" action="/machines/{{ m.id }}/pause"><button class="ghost">Pause</button></form>
+    <form class="inline" method="post" action="/machines/{{ m.id }}/stop"
+          onsubmit="return confirm('Turn off {{ m.name }}? Running programs will close.')">
+      <button class="ghost">Turn off</button></form>
+  {% endif %}
+  <form class="inline" method="post" action="/admin/idle-policy/{{ m.id }}">
+    <select name="policy" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:.35rem;font-size:.8rem"
+            onchange="this.form.querySelector('[name=minutes]').style.display = this.value === 'custom' ? 'inline-block' : 'none'">
+      <option value="default" {{ not m.idle_policy and not m.idle_minutes and "selected" or "" }}>pause: tenant default</option>
+      <option value="keep-awake" {{ m.idle_policy == "keep-awake" and "selected" or "" }}>never pause (always on)</option>
+      <option value="custom" {{ m.idle_minutes and "selected" or "" }}>pause after custom minutes…</option>
+    </select>
+    <input type="number" name="minutes" value="{{ m.idle_minutes or 60 }}" min="5" max="1440"
+           style="width:4.2rem;{{ not m.idle_minutes and 'display:none;' or '' }}background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:.3rem;font-size:.8rem">
+    <button class="ghost">Set</button>
+  </form>
+  <form class="inline" method="post" action="/admin/remove/{{ m.id }}"
+        onsubmit="return confirm('Remove {{ m.owner }} and DELETE {{ m.name }}? The machine and its disk are destroyed. This cannot be undone.')">
+    <button style="background:#b33">Remove user</button></form>
+</div>
+{% endfor %}
+
+<h2>Viewer-only users</h2>
+<div class="card">
+  <form class="share" method="post" action="/admin/viewers/add" style="border:0;padding:0;margin:0">
+    <input type="email" name="viewer_upn" placeholder="viewer email (Entra UPN)" required>
+    <button class="ghost">Add viewer</button>
+  </form>
+</div>
+{% if viewers %}
+{% for v in viewers %}
+<div class="card">
+  <div class="meta">
+    <div class="name">{{ v }}</div>
+    <div class="sub">can join sessions shared with them — no terminal of their own</div>
+  </div>
+  <form class="inline" method="post" action="/admin/viewers/remove">
+    <input type="hidden" name="viewer_upn" value="{{ v }}">
+    <button class="ghost">Remove</button></form>
+</div>
+{% endfor %}
+{% else %}
+<p class="note" style="margin-top:-.3rem">No viewer-only users yet. Add someone here and
+they can sign in with their Microsoft account; when a terminal owner (or admin) shares a
+session with their email, it appears on their page with a Join button.</p>
+{% endif %}
+
+{% if sessions %}
+<h2>Active sessions</h2>
+{% for s in sessions %}
+<div class="card">
+  <div class="meta">
+    <div class="name">{{ s.owner }}'s session</div>
+    <div class="sub">{{ s.state }}{% if s.grants %} · shared with:
+      {% for g, lvl in s.grants.items() %}{{ g }} ({{ lvl }}){% if not loop.last %}, {% endif %}{% endfor %}
+    {% endif %}</div>
+  </div>
+  <form class="inline" method="post" action="/join/{{ s.id }}"><button class="ghost">Join</button></form>
+  {% for g, lvl in s.grants.items() %}
+  <form class="inline" method="post" action="/revoke/{{ s.id }}/{{ g }}">
+    <button class="ghost">Revoke {{ g }}</button></form>
+  {% endfor %}
+</div>
+{% endfor %}
+{% endif %}
+
+<p class="note"><a href="/">&larr; back to terminals</a></p>
+
+{% if auto_refresh %}
+<script>setTimeout(() => window.location.href = "/admin", 10000);</script>
+{% endif %}
+
+<script>
+  document.querySelectorAll("form").forEach(f => f.addEventListener("submit", e => {
+    setTimeout(() => {
+      if (e.defaultPrevented) return;
+      const b = f.querySelector("button");
+      if (b) b.textContent = "…";
+      document.querySelectorAll("button").forEach(x => x.disabled = true);
+    }, 0);
+  }));
+</script>
+
+{% endblock %}

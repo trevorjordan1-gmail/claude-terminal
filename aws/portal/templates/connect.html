@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Connecting…</h2>
+<div class="card">
+  <div class="meta">
+    <div class="name">Launching the DCV client</div>
+    <div class="sub">If nothing happens in a few seconds, the client may not be
+    installed — use the buttons below.</div>
+  </div>
+  <a class="btn" href="{{ dcv_url }}">Open again</a>
+  <a class="btn" href="/dcvfile/{{ session_id }}/{{ connect_user }}"
+     style="background:transparent;border:1px solid var(--line);color:var(--muted)">Download .dcv file</a>
+</div>
+<div class="card" id="fallback" style="display:none">
+  <div class="meta">
+    <div class="name">Don't have the client?</div>
+    <div class="sub">Install it once, then click Connect again.</div>
+  </div>
+  <a class="btn" href="/downloads">Get the client (latest)</a>
+</div>
+<p class="note"><a href="/">&larr; back to your terminals</a></p>
+<script>
+  // hand off to the native client; if the page is still focused shortly after,
+  // assume the protocol handler is missing and surface the download card
+  window.location.href = {{ dcv_url | tojson }};
+  let blurred = false;
+  window.addEventListener("blur", () => blurred = true);
+  setTimeout(() => { if (!blurred) document.getElementById("fallback").style.display = "flex"; }, 2500);
+</script>
+{% endblock %}
