@@ -6,9 +6,11 @@ tenant users; guests join the same session through the gateway.
 """
 
 import json
+import socket
 import time
 import urllib.parse
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 import msal
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -135,13 +137,27 @@ def logout():
 ACTION_BANNERS = {
     "pause": "Pause requested — saving the terminal's full state (a minute or two). "
              "Everything resumes exactly where you left off.",
-    "start": "Starting — resuming takes 30–60 seconds; Connect lights up when it's Running.",
+    "start": "Starting — restoring a paused terminal takes 2–3 minutes; the status "
+             "shows 'Waking up…' until it's truly ready to connect.",
     "stop": "Turning off — running programs will close. Use Pause next time to keep your work.",
     "reboot": "Reboot requested — status stays 'Running' during a reboot; the session "
               "drops for ~30 seconds.",
 }
 
 HIBERNATED = "Client.UserInitiatedHibernate"
+
+
+def _dcv_reachable(ip: str, timeout: float = 0.7) -> bool:
+    """True when the desktop's DCV server answers on 8443 — the only honest
+    "you can actually connect now" signal. During a resume-from-Pause EC2 says
+    running within seconds and the broker even keeps the server AVAILABLE,
+    while the OS spends ~3 min restoring its RAM image (measured 2026-08-16).
+    A TCP connect from the control plane is ground truth."""
+    try:
+        with socket.create_connection((ip, 8443), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 def _annotate_machines(machines: list[dict]) -> None:
@@ -153,12 +169,21 @@ def _annotate_machines(machines: list[dict]) -> None:
         avail = {s.get("Hostname") for s in broker.describe_servers()
                  if s.get("Availability") == "AVAILABLE"}
     except Exception:
-        return  # broker unreachable: fail open, don't block Connect
-    for m in machines:
-        if m["css"] == "running" and m.get("private_ip"):
-            if "ip-" + m["private_ip"].replace(".", "-") not in avail:
-                m["label"], m["css"] = "Getting ready…", "pending"
-                m["progress"] = aws_ec2.provision_status(m["id"])
+        avail = None  # broker unreachable: fail open on that check
+    if avail is not None:
+        for m in machines:
+            if m["css"] == "running" and m.get("private_ip"):
+                if "ip-" + m["private_ip"].replace(".", "-") not in avail:
+                    m["label"], m["css"] = "Getting ready…", "pending"
+                    m["progress"] = aws_ec2.provision_status(m["id"])
+    # honest wake state: EC2 "running" isn't connectable until DCV answers
+    runners = [m for m in machines if m["css"] == "running" and m.get("private_ip")]
+    if runners:
+        with ThreadPoolExecutor(max_workers=min(8, len(runners))) as ex:
+            up = list(ex.map(lambda m: _dcv_reachable(m["private_ip"]), runners))
+        for m, ok in zip(runners, up):
+            if not ok:
+                m["label"], m["css"], m["waking"] = "Waking up…", "pending", True
 
 
 def _display_state(m: dict) -> tuple[str, str]:
@@ -310,6 +335,10 @@ def connect(request: Request, instance_id: str):
         return _render("starting.html", user=user, machine=m)
     if m["state"] != "running":
         return _render("starting.html", user=user, machine=m)
+    if m.get("private_ip") and not _dcv_reachable(m["private_ip"]):
+        # EC2 says running but the OS is still restoring — a broker session
+        # handed out now would resolve to a desktop the gateway can't reach
+        return _render("starting.html", user=user, machine=m)
 
     owner_local = config.local_user(m["owner"])
     try:
@@ -457,7 +486,8 @@ def admin_page(request: Request):
 def admin_idle_settings(request: Request,
                         enabled: str = Form(""),
                         idle_minutes: int = Form(30),
-                        sensitivity: str = Form("balanced")):
+                        sensitivity: str = Form("balanced"),
+                        pause_to_off_hours: int = Form(48)):
     _require_admin(request)
     preset = idle_settings.SENSITIVITY_PRESETS.get(sensitivity)
     if not preset:
@@ -470,6 +500,7 @@ def admin_idle_settings(request: Request,
         "claude_active_ticks": preset["claude_active_ticks"],
         "load_active": preset["load_active"],
         "min_uptime_secs": current["min_uptime_secs"],
+        "pause_to_off_hours": max(0, min(pause_to_off_hours, 720)),
     })
     return RedirectResponse("/admin?did=idle", status_code=303)
 

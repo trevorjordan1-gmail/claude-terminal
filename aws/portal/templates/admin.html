@@ -22,6 +22,14 @@
         <option value="balanced" {{ idle.sensitivity == "balanced" and "selected" or "" }}>Real work — someone connected, Claude working, or a build running (recommended)</option>
         <option value="aggressive" {{ idle.sensitivity == "aggressive" and "selected" or "" }}>Heavy work only — pause unless it's clearly busy (maximum savings)</option>
       </select></label>
+    <label style="font-size:.9rem">If a terminal stays paused for
+      <select name="pause_to_off_hours" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:.35rem">
+        {% for v, lbl in [(24, "1 day"), (48, "2 days (recommended)"), (72, "3 days"), (168, "1 week"), (0, "never")] %}
+        <option value="{{ v }}" {{ idle.pause_to_off_hours == v and "selected" or "" }}>{{ lbl }}</option>
+        {% endfor %}
+      </select>
+      turn it fully off — costs the same either way, but after this long the saved
+      session is stale anyway, and the next start is a clean fresh boot</label>
     <div><button class="ghost">Save</button></div>
   </form>
 </div>

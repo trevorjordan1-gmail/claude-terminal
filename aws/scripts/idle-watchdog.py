@@ -14,9 +14,11 @@ after boot wedges) or tagged IdlePolicy=keep-awake.
 State survives restarts in /var/lib/asp/idle-state.json.
 """
 
+import calendar
 import json
 import os
 import pathlib
+import re
 import time
 
 import boto3
@@ -36,6 +38,10 @@ DEFAULTS = {
     "claude_active_ticks": 300,  # 3 CPU-sec per check window
     "load_active": 0.25,
     "min_uptime_secs": 900,
+    # After this many hours paused: wake briefly, then power off cleanly.
+    # Same cost either way, but a 2-day-old session is stale anyway and this
+    # sidesteps EC2's 60-day hibernation cap. 0 = never convert.
+    "pause_to_off_hours": 48,
 }
 
 STATE_FILE = pathlib.Path("/var/lib/asp/idle-state.json")
@@ -73,7 +79,31 @@ def running_desktops() -> list[dict]:
             out.append({"id": inst["InstanceId"],
                         "name": tags.get("Name", inst["InstanceId"]),
                         "policy": tags.get("IdlePolicy", ""),
-                        "idle_minutes_tag": tags.get("IdleMinutes", "")})
+                        "idle_minutes_tag": tags.get("IdleMinutes", ""),
+                        "convert": tags.get("AspConvert", "")})
+    return out
+
+
+def paused_desktops() -> list[dict]:
+    """Hibernated terminals + when they were paused (StateTransitionReason)."""
+    resp = ec2.describe_instances(Filters=[
+        {"Name": "tag:Role", "Values": ["desktop"]},
+        {"Name": "tag:Customer", "Values": [CUSTOMER]},
+        {"Name": "instance-state-name", "Values": ["stopped"]},
+    ])
+    out = []
+    for res in resp["Reservations"]:
+        for inst in res["Instances"]:
+            if (inst.get("StateReason") or {}).get("Code") != "Client.UserInitiatedHibernate":
+                continue
+            tags = {t["Key"]: t["Value"] for t in inst.get("Tags", [])}
+            m = re.search(r"\((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) GMT\)",
+                          inst.get("StateTransitionReason", ""))
+            paused_at = (calendar.timegm(time.strptime(m.group(1), "%Y-%m-%d %H:%M:%S"))
+                         if m else None)
+            out.append({"id": inst["InstanceId"],
+                        "name": tags.get("Name", inst["InstanceId"]),
+                        "paused_at": paused_at})
     return out
 
 
@@ -119,15 +149,57 @@ def main() -> None:
             pass
     now = time.time()
 
+    # Pause → power-off conversion, phase 1: a hibernated machine can't drop
+    # its RAM image in place — wake it (tagged), phase 2 below shuts it down
+    # cleanly once it's settled and idle.
+    limit_h = float(cfg.get("pause_to_off_hours") or 0)
+    if limit_h > 0:
+        for m in paused_desktops():
+            if m["paused_at"] is None:
+                continue
+            age_h = (now - m["paused_at"]) / 3600
+            if age_h >= limit_h:
+                log(f"{m['name']}: paused {age_h:.1f}h ≥ {limit_h:g}h — converting "
+                    "Pause to power-off (brief wake, then clean shutdown)")
+                try:
+                    ec2.start_instances(InstanceIds=[m["id"]])
+                    ec2.create_tags(Resources=[m["id"]],
+                                    Tags=[{"Key": "AspConvert", "Value": "off"}])
+                except Exception as e:  # noqa: BLE001
+                    log(f"{m['name']}: convert start failed: {e}")
+
     for m in running_desktops():
         iid, name = m["id"], m["name"]
-        if m["policy"] == "keep-awake":
+        if m["policy"] == "keep-awake" and not m["convert"]:
             log(f"{name}: keep-awake tag, skipping")
             continue
         p = probe(iid)
         if p is None:
             log(f"{name}: probe failed, skipping this round")
             continue
+
+        # Pause → power-off conversion, phase 2: the user always wins — any
+        # connection cancels the conversion and normal idle logic resumes.
+        if m["convert"]:
+            if p["conns"] > 0:
+                log(f"{name}: conversion cancelled — someone connected")
+                ec2.delete_tags(Resources=[iid], Tags=[{"Key": "AspConvert"}])
+            # no uptime gate: uptime persists across hibernate so it can't
+            # measure "time since wake" — the ≥5 min watchdog cycle spacing
+            # plus the dpkg-lock check are the real settling guards
+            elif int(p.get("apt", 1)) == 0:
+                log(f"{name}: converting — powering off cleanly (pause was older than {limit_h:g}h)")
+                try:
+                    ec2.stop_instances(InstanceIds=[iid])
+                    ec2.delete_tags(Resources=[iid], Tags=[{"Key": "AspConvert"}])
+                    state.pop(iid, None)
+                except Exception as e:  # noqa: BLE001
+                    log(f"{name}: convert stop failed: {e}")
+                continue
+            else:
+                log(f"{name}: converting — letting it settle "
+                    f"(up {p['uptime']}s, apt={p.get('apt', 0)})")
+                continue
         st = state.get(iid, {})
         prev_cpu = st.get("claude_cpu")
         cpu_delta = None if prev_cpu is None else p["claude_cpu"] - prev_cpu

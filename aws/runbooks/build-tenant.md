@@ -280,6 +280,20 @@ idle minutes, Claude CPU-sec threshold, load threshold — stored in SSM
 `IdlePolicy` / `IdleMinutes`, so they survive everything and are visible in
 the AWS console too). Logs: `journalctl -u asp-idle-watchdog`.
 
+**Pause→off conversion:** a pause older than the admin-set limit (default
+48 h, 0 = never) is converted to a full power-off — the watchdog wakes the
+machine (tag `AspConvert=off`), lets it settle, and issues a clean stop once
+the dpkg lock is free and nobody is connected; any connection cancels the
+conversion. Cost is identical either way; this exists because a 2-day-old
+session is stale anyway and it sidesteps EC2's 60-day hibernation cap. Two
+hard-won details: the "apt busy" signal must be the **dpkg lock**
+(`flock -n /var/lib/dpkg/lock-frontend`), never a process grep — Ubuntu's
+always-running `unattended-upgrade-shutdown` monitor makes greps read busy
+forever; and **uptime persists across hibernate**, so it cannot gate
+"time since wake". The portal's honest wake state rides the same truth: a
+TCP probe of desktop:8443 from the control plane (EC2 `running` and even
+broker AVAILABLE both lie during the ~1.5–3.5 min RAM restore).
+
 ## 11.5 Access & user-lifecycle model
 
 - **Login:** any account in the client's Entra tenant can authenticate; the
