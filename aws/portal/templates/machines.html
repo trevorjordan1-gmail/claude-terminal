@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if banner %}<div class="banner">{{ banner }}</div>{% endif %}
+{% if is_admin %}<p class="note" style="margin:0 0 1rem"><a href="/admin">Admin — manage users &amp; terminals</a></p>{% endif %}
+
+{% if mine %}
+<h2>Your terminal{{ mine|length > 1 and "s" or "" }}</h2>
+{% for m in mine %}
+<div class="card">
+  <div class="meta">
+    <div class="name">{{ m.name }}</div>
+    <div class="sub">{{ m.type }} · {{ m.owner }}</div>
+  </div>
+  <span class="state {{ m.css }}">{{ m.label }}</span>
+  {% if m.css == "pending" and m.progress %}
+  <div class="prog"><div class="prog-fill" style="width:{{ m.progress.pct }}%"></div></div>
+  <div class="sub" style="width:100%">{{ m.progress.label }} — {{ m.progress.pct }}%{% if m.progress.eta_left and m.progress.pct < 100 %}, about {{ m.progress.eta_left }} min left{% endif %}</div>
+  {% elif m.css == "pending" and m.state == "running" %}
+  <div class="sub" style="width:100%">Setting up — a brand-new terminal takes 20–30 minutes</div>
+  {% endif %}
+  {% if not suppress_actions %}
+    {% if m.css == "running" %}
+      <form class="inline" method="post" action="/connect/{{ m.id }}"><button>Connect</button></form>
+      <form class="inline" method="post" action="/machines/{{ m.id }}/pause"><button class="ghost">Pause</button></form>
+      <form class="inline" method="post" action="/machines/{{ m.id }}/reboot"
+            onsubmit="return confirm('Reboot? Your session drops for ~30 seconds and running programs restart.')">
+        <button class="ghost">Reboot</button></form>
+      <form class="inline" method="post" action="/machines/{{ m.id }}/stop"
+            onsubmit="return confirm('Turn off? Running programs will close. Use Pause instead to keep your work.')">
+        <button class="ghost">Turn off</button></form>
+    {% elif m.css == "paused" %}
+      <form class="inline" method="post" action="/machines/{{ m.id }}/start"><button>Resume</button></form>
+    {% elif m.css == "stopped" %}
+      <form class="inline" method="post" action="/machines/{{ m.id }}/start"><button>Start</button></form>
+    {% endif %}
+  {% endif %}
+  {% if m.css == "running" and not suppress_actions %}
+  <form class="share" method="post" action="/share/{{ m.id }}">
+    <input type="email" name="guest_upn" placeholder="share with (email)" required>
+    <select name="level"><option value="view">view only</option><option value="control">full control</option></select>
+    <button class="ghost">Share</button>
+  </form>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{% if my_shares %}
+<h2>You're sharing</h2>
+{% for sh in my_shares %}
+<div class="card">
+  <div class="meta">
+    <div class="name">{{ sh.guest }}</div>
+    <div class="sub">{{ sh.level }} access to your session</div>
+  </div>
+  <form class="inline" method="post" action="/revoke/{{ sh.session_id }}/{{ sh.guest }}">
+    <button class="ghost">Revoke</button></form>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if joinable %}
+<h2>Sessions you can join</h2>
+{% for s in joinable %}
+<div class="card">
+  <div class="meta">
+    <div class="name">{{ s.owner }}'s session</div>
+    <div class="sub">{{ s.level }} access</div>
+  </div>
+  <form class="inline" method="post" action="/join/{{ s.id }}"><button>Join</button></form>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if is_admin and others %}
+<h2>All tenant terminals (admin)</h2>
+{% for m in others %}
+<div class="card">
+  <div class="meta">
+    <div class="name">{{ m.name }}</div>
+    <div class="sub">{{ m.type }} · {{ m.owner }}</div>
+  </div>
+  <span class="state {{ m.css }}">{{ m.label }}</span>
+  {% if not suppress_actions and m.css in ("paused", "stopped") %}
+    <form class="inline" method="post" action="/machines/{{ m.id }}/start">
+      <button class="ghost">{{ m.css == "paused" and "Resume" or "Start" }}</button></form>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{% if not mine and not joinable %}
+<p class="note">No terminal is assigned to you and nothing is shared with you right now.
+When someone shares their session with your email, it appears here with a Join button.
+If you're expecting your own terminal, ask your admin.</p>
+{% endif %}
+
+<p class="note"><a href="/downloads">DCV client downloads</a> — install once per device.</p>
+
+{% if auto_refresh %}
+<p class="note">Status updates automatically…</p>
+<script>setTimeout(() => window.location.href = "/", 10000);</script>
+{% endif %}
+
+<script>
+  // no button pounding: a submit that isn't cancelled (confirm dialogs may
+  // cancel it) disables every button until the page reloads
+  document.querySelectorAll("form").forEach(f => f.addEventListener("submit", e => {
+    setTimeout(() => {
+      if (e.defaultPrevented) return;
+      const b = f.querySelector("button");
+      if (b) b.textContent = "…";
+      document.querySelectorAll("button").forEach(x => x.disabled = true);
+    }, 0);
+  }));
+</script>
+
+{% endblock %}

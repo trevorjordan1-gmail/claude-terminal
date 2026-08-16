@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Waking your terminal</h2>
+<div class="card">
+  <div class="meta">
+    <div class="name">{{ machine.name }} is {{ machine.state == "stopped" and "starting" or machine.state }}…</div>
+    <div class="sub">Resuming from pause takes 30–60 seconds. This page refreshes itself.</div>
+  </div>
+</div>
+<script>setTimeout(() => window.location.href = "/", 8000);</script>
+{% endblock %}

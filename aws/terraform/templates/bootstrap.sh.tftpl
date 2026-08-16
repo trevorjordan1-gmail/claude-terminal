@@ -1,0 +1,25 @@
+#!/bin/bash
+# Thin bootstrap: persist env, pull the real setup script from S3, run it.
+# The real scripts are idempotent and re-runnable via SSM for iteration.
+set -uxo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+until apt-get update -y; do sleep 5; done
+apt-get install -y unzip curl
+
+if ! command -v aws >/dev/null; then
+  curl -s "https://awscli.amazonaws.com/awscli-exe-linux-${arch}.zip" -o /tmp/awscliv2.zip
+  unzip -q /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+fi
+
+mkdir -p /opt/asp
+cat > /etc/asp-terminal.env <<'ENVEOF'
+%{ for k, v in env ~}
+${k}=${v}
+%{ endfor ~}
+ENVEOF
+
+aws s3 cp "s3://${bucket}/scripts/${script}" /opt/asp/setup.sh
+chmod +x /opt/asp/setup.sh
+/opt/asp/setup.sh 2>&1 | tee -a /var/log/asp-setup.log

@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>No access</h2>
+<p class="note">You're signed in as {{ user.upn }}, but this account isn't in any
+terminals access group. Ask your admin to add you.</p>
+{% endblock %}

@@ -13,3 +13,11 @@ CLAUDE.md
 # Local-only docs — internal infrastructure detail (AWS accounts, hostnames,
 # staff IDs). Never commit anything under here.
 docs/internal/
+
+# aws/ platform — tenant identity is PRIVATE, only templates are committed
+aws/tenants.json
+aws/terraform/*.tfvars
+aws/terraform/backend.hcl
+aws/terraform/.terraform*
+aws/terraform/terraform.tfstate*
+DCV-MODE-REQUEST.md

@@ -89,6 +89,16 @@ guard working and keeps a mistyped menu answer from closing your console. It
 also enables TLS 1.2 and sets a **process-scoped** execution policy bypass —
 nothing persists past that console window.
 
+## Provisioning cloud terminals (AWS + Amazon DCV)
+
+The cloud sibling of the Hyper-V path: [`aws/`](aws/README.md) builds a whole
+**tenant** — client-owned AWS account, streamed DCV desktops (1:1 per user,
+auto-pause when idle), an Entra-login portal for connect/power/sharing, and a
+fleet self-update channel. Terminals provision themselves from the tenant's
+artifacts bucket and run this same kit per user (`is_dcv_terminal` gates the
+modules that don't apply). Start at
+[`aws/runbooks/build-tenant.md`](aws/runbooks/build-tenant.md).
+
 ## What the core installs
 
 | Module | Purpose |
