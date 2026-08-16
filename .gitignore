@@ -9,3 +9,7 @@ CLAUDE.md
 # Editor / OS noise
 *.swp
 .DS_Store
+
+# Local-only docs — internal infrastructure detail (AWS accounts, hostnames,
+# staff IDs). Never commit anything under here.
+docs/internal/

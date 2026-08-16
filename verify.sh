@@ -89,7 +89,9 @@ else
     s "~/.claude-mem not present yet (created on first claude session after install)"
 fi
 
-if have gsettings && ensure_user_dbus; then
+# GNOME state reads straight from the dconf database — no session or bus
+# needed, so these run on headless boxes too (cloud/DCV, unattended builds).
+if have gsettings && gsettings list-schemas 2>/dev/null | grep -q '^org\.gnome\.shell$'; then
     if [ "$(gsettings get org.gnome.desktop.screensaver lock-enabled 2>/dev/null)" = "false" ]; then
         p "screen lock disabled"
     else
@@ -100,14 +102,29 @@ if have gsettings && ensure_user_dbus; then
     else
         f "idle-delay not 0"
     fi
+    FAVS="['firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop']"
+    if [ "$(gsettings get org.gnome.shell favorite-apps 2>/dev/null)" = "$FAVS" ]; then
+        p "dock favorites converged (Firefox, Files, Terminal)"
+    else
+        f "dock favorites are $(gsettings get org.gnome.shell favorite-apps 2>/dev/null || echo unreadable)"
+    fi
+    if have dconf && [ -n "$(dconf dump /org/gnome/terminal/legacy/ 2>/dev/null)" ]; then
+        p "terminal prefs present (seeded or user-customized)"
+    else
+        f "GNOME Terminal prefs tree empty — 42-terminal-prefs never seeded"
+    fi
 else
-    s "gsettings unavailable (no GUI session bus) — GNOME checks skipped"
+    s "no GNOME desktop on this box — GNOME checks skipped"
 fi
 
-if grep -qE '^WaylandEnable=false' /etc/gdm3/custom.conf 2>/dev/null; then
-    p "Wayland disabled at GDM (X11 forced)"
+if [ -d /etc/gdm3 ]; then
+    if grep -qE '^WaylandEnable=false' /etc/gdm3/custom.conf 2>/dev/null; then
+        p "Wayland disabled at GDM (X11 forced)"
+    else
+        f "WaylandEnable=false not set in /etc/gdm3/custom.conf (RustDesk/Splashtop need X11)"
+    fi
 else
-    f "WaylandEnable=false not set in /etc/gdm3/custom.conf (RustDesk/Splashtop need X11)"
+    s "no GDM on this box (session comes from DCV/xrdp/etc.) — Wayland check n/a"
 fi
 
 if [ "$(systemd-detect-virt 2>/dev/null)" = "microsoft" ]; then

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016  # OData query params ($select/$filter/$orderby) are Graph
+# API literals — the single quotes are what keeps the shell from eating the $.
 # aiops-mail.sh — the terminal's email channel: send and read mail AS the client's
 # aiops@<clientdomain> mailbox, via Microsoft Graph on the ONE <code>-sso registration
 # (delegated Mail.Read/ReadWrite/Send, consented for the aiops principal ONLY; device-code

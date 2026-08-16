@@ -90,6 +90,22 @@ ensure_user_dbus() {
     [ -S "$XDG_RUNTIME_DIR/bus" ]
 }
 
+# Run a gsettings/dconf WRITE whether or not a session exists. Prefer the live
+# user bus (a running desktop sees the change instantly); with no bus at all —
+# headless provisioning (cloud/DCV first boot, unattended Hyper-V builds) — run
+# it on a private one-shot bus instead: dconf-service writes the same
+# ~/.config/dconf/user database, so the settings are in place when the first
+# session starts. Without this, a busless `gsettings set` exits 0 while writing
+# nothing (memory backend). READS never need any bus — dconf reads the database
+# file directly — so plain `gsettings get` / `dconf dump` stay unwrapped.
+gui_conf() {
+    if ensure_user_dbus; then "$@"; else dbus-run-session -- "$@"; fi
+}
+
+# Gate for gui_conf: false only when even the one-shot-bus fallback is
+# impossible (no user bus AND no dbus-run-session binary).
+gui_conf_ready() { ensure_user_dbus || have dbus-run-session; }
+
 # True once Claude Code is installed AND logged in (plugin operations need both).
 claude_ready() {
     have claude && [ -f "$HOME/.claude/.credentials.json" ]

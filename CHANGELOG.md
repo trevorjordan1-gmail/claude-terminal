@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-08-15
+
+- **GNOME settings now apply on headless provisions** (cloud/DCV terminals,
+  unattended Hyper-V builds). `40-gnome-qol` and `42-terminal-prefs` used to
+  skip whenever no user D-Bus session existed — on fleet boxes built without a
+  desktop login that meant no dock pins and stock terminal prefs, visibly wrong
+  on first connect. New `gui_conf` helper in `lib/common.sh`: writes use the
+  live user bus when there is one (running desktops see changes instantly) and
+  otherwise run on a private one-shot bus (`dbus-run-session`), which lands in
+  the same `~/.config/dconf/user` the first session reads. Container-proven
+  detail worth knowing: a busless `gsettings set` **exits 0 while writing
+  nothing** (memory backend) — the wrapper is what makes the write real.
+- `verify.sh` GNOME checks no longer skip without a session bus — dconf reads
+  the database file directly, so they now run everywhere GNOME is installed,
+  and two new checks cover the exact fleet defects: dock favorites converged,
+  terminal prefs tree non-empty. The GNOME gate is now schema presence (real
+  GNOME) rather than bus presence (logged-in GNOME).
+- `verify.sh` no longer FAILs the Wayland check on boxes without GDM (DCV/xrdp
+  sessions bring their own X server) — mirrors `38-x11-session`'s own gate,
+  which already skipped there; now the scorecard agrees.
+- `.gitignore`: new local-only `docs/internal/` area for notes that reference
+  private infrastructure (same rule as the root `CLAUDE.md`).
+
 ## 2026-08-14
 
 - **The aiops mail rider — terminals can now use email.** New

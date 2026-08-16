@@ -51,10 +51,16 @@ Modules are **sourced inside a subshell** by `bootstrap.sh`. Rules:
    already adds (e.g. the claude-login reminder).
 4. Available helpers: `have`, `pkg_installed`, `apt_install` (auto
    `apt-get update` once per run), `append_block FILE MARKER <<'EOF'`
-   (idempotent marker-delimited config blocks), `ensure_user_dbus` (makes
-   gsettings/dconf work over SSH), `claude_ready` (installed *and* logged in),
-   `log/warn`. After adding an apt repo, `rm -f "$CT_TMP/apt-updated"` to
-   force a re-update.
+   (idempotent marker-delimited config blocks), `claude_ready` (installed
+   *and* logged in), `log/warn`. After adding an apt repo,
+   `rm -f "$CT_TMP/apt-updated"` to force a re-update.
+   **gsettings/dconf writes go through `gui_conf`** (gate with
+   `gui_conf_ready || skip`): it uses the live user bus when one exists and
+   falls back to a private one-shot bus (`dbus-run-session`) so headless
+   provisioning works — a busless `gsettings set` otherwise exits 0 while
+   writing nothing. Reads (`gsettings get`, `dconf dump`) hit the database
+   file directly and need no bus or wrapper. (`ensure_user_dbus` remains the
+   lower-level SSH-session helper `gui_conf` builds on.)
 5. **Idempotency is non-negotiable.** Re-running bootstrap is the upgrade
    path. Guard every mutation (`grep -q` before sed-insert, `pkg_installed`
    before apt, compare-before-set for gsettings).
