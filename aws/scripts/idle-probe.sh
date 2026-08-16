@@ -26,5 +26,9 @@ done
 
 LOAD1=$(cut -d' ' -f1 /proc/loadavg)
 UP=$(cut -d. -f1 /proc/uptime)
+# package work in flight? (the watchdog must never power off mid-apt)
+# The dpkg lock is the canonical signal — process-name greps match Ubuntu's
+# always-running unattended-upgrade-shutdown monitor and never read 0.
+APT=$(flock -n /var/lib/dpkg/lock-frontend -c true 2>/dev/null && echo 0 || echo 1)
 
-echo "{\"conns\":$CONNS,\"claude_procs\":$NPROC,\"claude_cpu\":$CPU,\"load1\":$LOAD1,\"uptime\":$UP}"
+echo "{\"conns\":$CONNS,\"claude_procs\":$NPROC,\"claude_cpu\":$CPU,\"load1\":$LOAD1,\"uptime\":$UP,\"apt\":$APT}"
