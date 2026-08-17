@@ -99,6 +99,29 @@ artifacts bucket and run this same kit per user (`is_dcv_terminal` gates the
 modules that don't apply). Start at
 [`aws/runbooks/build-tenant.md`](aws/runbooks/build-tenant.md).
 
+## Windows: temporary troubleshooting install (`cctemp`) — not a terminal build
+
+Everything else in this repo builds a machine that *keeps* Claude Code. This
+one deliberately doesn't: [`windows/cctemp.ps1`](windows/cctemp.ps1) puts
+Claude Code on a Windows box **for the duration of a troubleshooting
+engagement only** — user-profile-scoped, no admin, no services — and removes
+it completely (binary, config, credentials) when you're done. It drops an
+intent marker (`%LOCALAPPDATA%\cctemp\installed.json`) so anyone finding it
+later can tell it apart from a deliberate install.
+
+Install (works from a ScreenConnect Backstage PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/trevorjordan1-gmail/claude-terminal/main/windows/cctemp.ps1 | iex
+```
+
+Remove when finished (or set `-AutoCleanupDays 7` at install time as a
+dead-man switch):
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/trevorjordan1-gmail/claude-terminal/main/windows/cctemp.ps1))) -Cleanup
+```
+
 ## What the core installs
 
 | Module | Purpose |
