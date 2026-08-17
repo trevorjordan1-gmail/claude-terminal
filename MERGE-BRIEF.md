@@ -34,7 +34,7 @@
 
 - Sessions run the **real branded Ubuntu session**: `/etc/dcv/dcvsessioninit` (ASP-owned) exports `XDG_CURRENT_DESKTOP=ubuntu:GNOME` + `GNOME_SHELL_SESSION_MODE=ubuntu`, then execs `/etc/X11/Xsession`. That file is what dcvserver actually runs — the SM agent `init/` dir is NOT in the code path; never put logic there.
 - **No printing by design**: session permissions disallow the DCV `printer` feature; cups/cups-browsed are masked. Never install or enable cups on DCV boxes; keep the `printing-direct` extra gated off DCV.
-- **Firefox is the snap**, pinned first in the dock; the session init wires snap XDG paths. Don't install a second Firefox.
+- **The browser is Google Chrome (native deb)**, pinned first in the dock; favorites are dconf-locked host-side (kit follow-up: gate `40-gnome-qol`'s Firefox pin + verify.sh's dock expectation off DCV, or align them to Chrome there).
 - **File transfer is on** (storage root = user's home, both directions).
 - `dcvserver` is explicitly boot-enabled — the package does not do this; the first clean reboot exposed it.
 

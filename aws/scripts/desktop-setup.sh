@@ -50,9 +50,65 @@ apt-get update -y
 apt-get install -y ubuntu-desktop-minimal gnome-terminal dbus-x11 xdg-utils
 # the left dock + tray icons are extensions ubuntu-desktop-minimal doesn't pull
 apt-get install -y gnome-shell-extension-ubuntu-dock gnome-shell-extension-appindicator
-apt-get install -y firefox
-# noble's firefox deb is transitional to the snap; make the snap certain
-snap list firefox >/dev/null 2>&1 || snap install firefox
+# ---- browser: Google Chrome, native deb (decision TJ 2026-08-17) ----
+# The Firefox snap's cold-start unpack was the "100% CPU when I open the
+# browser" complaint; Chrome's deb launches clean. Usage is light (auth,
+# artifacts, app testing) — tuned for the no-GPU streamed pipeline below.
+if ! dpkg -s google-chrome-stable >/dev/null 2>&1; then
+  wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/chrome.deb
+  apt-get install -y /tmp/chrome.deb
+fi
+snap remove firefox 2>/dev/null || true
+apt-get remove -y --purge firefox 2>/dev/null || true  # transitional snap shim
+
+# managed policies: no autoplay video (software decode + software encode is
+# the worst thing this box can do), no background mode, no session-restore
+# nags, no telemetry; GPU process off — there is no GPU, Chrome's software
+# raster beats GL-on-llvmpipe
+mkdir -p /etc/opt/chrome/policies/managed
+cat > /etc/opt/chrome/policies/managed/asp-terminal.json <<'JSON'
+{
+  "AutoplayAllowed": false,
+  "BackgroundModeEnabled": false,
+  "MetricsReportingEnabled": false,
+  "PromotionalTabsEnabled": false,
+  "DefaultBrowserSettingEnabled": false,
+  "HardwareAccelerationModeEnabled": false,
+  "RestoreOnStartup": 5
+}
+JSON
+
+# launch flags: smooth scrolling off IN CHROME ONLY (each smooth-scroll frame
+# is an llvmpipe composite + DCV encode; discrete jumps stream snappier —
+# GNOME Terminal keeps its own smooth scrolling, this is per-app), reduced
+# motion, renderer count sized for the vCPUs. /usr/local overrides /usr/share
+# in XDG_DATA_DIRS so the dock and app grid pick this entry up.
+mkdir -p /usr/local/share/applications
+sed 's|Exec=/usr/bin/google-chrome-stable|Exec=/usr/bin/google-chrome-stable --disable-smooth-scrolling --force-prefers-reduced-motion --renderer-process-limit=2|g' \
+  /usr/share/applications/google-chrome.desktop > /usr/local/share/applications/google-chrome.desktop
+
+# warm start: the browser's launch burst happens during session creation,
+# before the user has even connected — clicking the dock icon is instant
+cat > /etc/xdg/autostart/cct-chrome-warm.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Chrome (warm start)
+Comment=Opens the browser at sign-in so it is already warm
+Exec=/usr/bin/google-chrome-stable --disable-smooth-scrolling --force-prefers-reduced-motion --renderer-process-limit=2
+OnlyShowIn=GNOME;
+X-GNOME-Autostart-Delay=3
+DESKTOP
+
+# paging safety (TJ 2026-08-17): hibernation's swap (ec2 hibinit, RAM-sized)
+# doubles as pageout space; if it is ever absent, provide a fallback so
+# memory pressure pages instead of OOM-killing
+if ! swapon --noheadings --show 2>/dev/null | grep -q .; then
+  if ! grep -q swap-fallback /etc/fstab; then
+    fallocate -l 2G /swap-fallback && chmod 600 /swap-fallback && \
+      mkswap /swap-fallback && swapon /swap-fallback && \
+      echo '/swap-fallback none swap sw 0 0' >> /etc/fstab
+  fi
+fi
 systemctl set-default multi-user.target
 systemctl disable --now gdm3 2>/dev/null || true
 
@@ -109,8 +165,13 @@ DCONF
 dconf update
 cat > /etc/dconf/db/local.d/03-asp-dock <<'DCONF'
 [org/gnome/shell]
-favorite-apps=['firefox_firefox.desktop', 'firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop']
+favorite-apps=['google-chrome.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop']
 DCONF
+# lock favorites: the workbench kit pins Firefox per-user (40-gnome-qol) and
+# would silently undo the Chrome dock on every kit re-run — the lock makes
+# the system default authoritative until the kit learns DCV browser choice
+mkdir -p /etc/dconf/db/local.d/locks
+printf '/org/gnome/shell/favorite-apps\n' > /etc/dconf/db/local.d/locks/01-asp-dock
 dconf update
 mkdir -p /etc/xdg/autostart
 cat > /etc/xdg/autostart/cct-welcome-terminal.desktop <<'DESKTOP'
