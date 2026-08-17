@@ -83,6 +83,8 @@ DCONF
 cat > /etc/dconf/db/local.d/01-asp-terminal <<'DCONF'
 [org/gnome/desktop/interface]
 text-scaling-factor=1.25
+# no GPU: every animation frame is llvmpipe CPU work + a DCV encode — skip them
+enable-animations=false
 
 [org/gnome/desktop/session]
 idle-delay=uint32 0
