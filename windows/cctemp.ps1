@@ -1,13 +1,14 @@
 <#
 .SYNOPSIS
     cctemp: TEMPORARY Claude Code install on Windows, for troubleshooting.
-    This is NOT the claude-terminal build. It leaves when you tell it to.
+    This is NOT the claude-terminal build. It leaves when you tell it to —
+    or after 30 days of nobody using it.
 
 .DESCRIPTION
     Puts Claude Code on a Windows machine for the duration of a troubleshooting
-    engagement, and removes it — binary, config, credentials — when you're done.
-    Everything is user-profile-scoped: no admin rights, no machine-wide changes,
-    no services, nothing in Program Files.
+    engagement, and removes it — binary, config, session transcripts,
+    credentials — when you're done. Everything is user-profile-scoped: no admin
+    rights, no machine-wide changes, no services, nothing in Program Files.
 
     Install (from any PowerShell, including a ScreenConnect Backstage session):
 
@@ -20,18 +21,24 @@
     (Switches must be bound via the scriptblock form — content piped to iex
     can't take parameters. Same launcher rationale as windows/get.ps1.)
 
-    Optional dead-man switch — schedule automatic cleanup N days out, so a
-    forgotten install removes itself:
-
-        & ([scriptblock]::Create((irm <same-url>))) -AutoCleanupDays 7
+    AUTO-CLEANUP (on by default): a daily scheduled task checks when Claude
+    Code was last USED — newest write time under ~\.claude, where every session
+    updates transcripts — and only when the install has sat idle for
+    -AutoCleanupDays days (default 30) does it purge. Any use resets the clock,
+    so an engagement that revives with a ticket keeps its install; a forgotten
+    one removes itself. `-AutoCleanupDays 0` disables the dead-man switch.
+    The check runs from a local copy saved at install time, so it works
+    offline and nothing is re-fetched from the internet on a schedule.
 
 .NOTES
     - Backstage sessions run as SYSTEM: the install lands in the SYSTEM
       profile, which is fine for troubleshooting — just run -Cleanup from the
       same context you installed from.
     - Sign-in is interactive (claude.ai account or API key) and is never
-      stored by this script; -Cleanup deletes the credential material with
-      the rest of ~/.claude.
+      stored by this script. -Cleanup deletes the local credential material
+      and all session transcripts with the rest of ~\.claude. (Local purge —
+      the OAuth grant itself expires server-side; revoke in claude.ai account
+      settings if a box was hostile.)
     - Intent marker: %LOCALAPPDATA%\cctemp\installed.json records when and by
       whom the temporary install was made, so a later tech (or an auditor)
       can tell this apart from a deliberate permanent install.
@@ -40,15 +47,33 @@
 [CmdletBinding()]
 param(
     [switch]$Cleanup,
-    [int]$AutoCleanupDays = 0
+    [int]$AutoCleanupDays = 30,
+    [switch]$AutoCleanupCheck
 )
 
 $ErrorActionPreference = 'Stop'
 
-$Marker    = Join-Path $env:LOCALAPPDATA 'cctemp\installed.json'
-$MarkerDir = Split-Path $Marker
+$MarkerDir = Join-Path $env:LOCALAPPDATA 'cctemp'
+$Marker    = Join-Path $MarkerDir 'installed.json'
+$LocalCopy = Join-Path $MarkerDir 'cctemp.ps1'
 $SelfUrl   = 'https://raw.githubusercontent.com/trevorjordan1-gmail/claude-terminal/main/windows/cctemp.ps1'
 $TaskName  = 'cctemp-autocleanup'
+
+function Get-CCLastUsed {
+    # Every Claude Code session writes transcripts/state under ~\.claude, so
+    # the newest write time there is a faithful "last used" signal. Fall back
+    # to the install timestamp, then to "now" (never wipe on missing data).
+    $claudeDir = Join-Path $env:USERPROFILE '.claude'
+    if (Test-Path $claudeDir) {
+        $newest = Get-ChildItem $claudeDir -Recurse -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($newest) { return $newest.LastWriteTime }
+    }
+    if (Test-Path $Marker) {
+        try { return [datetime](Get-Content $Marker -Raw | ConvertFrom-Json).installed_at } catch { }
+    }
+    return Get-Date
+}
 
 function Remove-CCTemp {
     Write-Host "`n[cctemp] removing temporary Claude Code install..." -ForegroundColor Yellow
@@ -59,10 +84,9 @@ function Remove-CCTemp {
         (Join-Path $env:USERPROFILE '.local\bin\claude.exe'),
         (Join-Path $env:USERPROFILE '.local\bin\claude'),
         (Join-Path $env:USERPROFILE '.local\share\claude'),
-        (Join-Path $env:USERPROFILE '.claude'),
+        (Join-Path $env:USERPROFILE '.claude'),          # sessions, transcripts, credentials, settings
         (Join-Path $env:USERPROFILE '.claude.json'),
-        (Join-Path $env:USERPROFILE '.claude.json.backup'),
-        $MarkerDir
+        (Join-Path $env:USERPROFILE '.claude.json.backup')
     )
     foreach ($t in $targets) {
         if (Test-Path $t) {
@@ -86,15 +110,33 @@ function Remove-CCTemp {
 
     schtasks /Delete /TN $TaskName /F 2>$null | Out-Null
 
+    # Marker + local copy go last so a failed run above leaves the evidence.
+    if (Test-Path $MarkerDir) { Remove-Item $MarkerDir -Recurse -Force -ErrorAction SilentlyContinue }
+
     Write-Host "[cctemp] done - no Claude Code remains for this user profile." -ForegroundColor Green
 }
 
 if ($Cleanup) { Remove-CCTemp; return }
 
+if ($AutoCleanupCheck) {
+    # Ran daily by the scheduled task, from the local copy. Quiet unless acting.
+    $days = $AutoCleanupDays
+    if (Test-Path $Marker) {
+        try { $days = [int](Get-Content $Marker -Raw | ConvertFrom-Json).auto_cleanup_days } catch { }
+    }
+    if ($days -le 0) { return }
+    $idle = (New-TimeSpan -Start (Get-CCLastUsed) -End (Get-Date)).TotalDays
+    if ($idle -ge $days) {
+        Write-Host "[cctemp] idle $([math]::Floor($idle))d >= $days d threshold - auto-cleaning."
+        Remove-CCTemp
+    }
+    return
+}
+
 Write-Host ''
 Write-Host '=====================================================================' -ForegroundColor Yellow
 Write-Host '  cctemp: TEMPORARY Claude Code install - troubleshooting use only'   -ForegroundColor Yellow
-Write-Host '  Remove when finished:'                                              -ForegroundColor Yellow
+Write-Host "  Auto-removes after $AutoCleanupDays days of no use. Remove now with:" -ForegroundColor Yellow
 Write-Host "    & ([scriptblock]::Create((irm $SelfUrl))) -Cleanup"
 Write-Host '=====================================================================' -ForegroundColor Yellow
 Write-Host ''
@@ -118,18 +160,27 @@ Unblock-File -Path $Installer -ErrorAction SilentlyContinue
 # Intent marker: makes "why is Claude Code on this box?" answerable later.
 New-Item -ItemType Directory -Path $MarkerDir -Force | Out-Null
 @{
-    installed_at = (Get-Date).ToString('o')
-    installed_by = "$env:USERDOMAIN\$env:USERNAME"
-    host         = $env:COMPUTERNAME
-    purpose      = 'TEMPORARY troubleshooting install (cctemp, claude-terminal repo)'
-    cleanup      = "& ([scriptblock]::Create((irm $SelfUrl))) -Cleanup"
+    installed_at      = (Get-Date).ToString('o')
+    installed_by      = "$env:USERDOMAIN\$env:USERNAME"
+    host              = $env:COMPUTERNAME
+    purpose           = 'TEMPORARY troubleshooting install (cctemp, claude-terminal repo)'
+    auto_cleanup_days = $AutoCleanupDays
+    cleanup           = "& ([scriptblock]::Create((irm $SelfUrl))) -Cleanup"
 } | ConvertTo-Json | Set-Content -Path $Marker -Encoding UTF8
 
 if ($AutoCleanupDays -gt 0) {
-    $when = (Get-Date).AddDays($AutoCleanupDays)
-    $cmd  = "powershell -NoProfile -ExecutionPolicy Bypass -Command `"& ([scriptblock]::Create((irm $SelfUrl))) -Cleanup`""
-    schtasks /Create /TN $TaskName /TR $cmd /SC ONCE /ST $when.ToString('HH:mm') /SD $when.ToString('MM/dd/yyyy') /F | Out-Null
-    Write-Host "[cctemp] dead-man switch set: auto-cleanup on $($when.ToString('yyyy-MM-dd HH:mm'))" -ForegroundColor Cyan
+    # Keep a local copy for the daily idle check: offline-safe, and the task
+    # never re-fetches code from the internet on a schedule.
+    try { Invoke-WebRequest -Uri $SelfUrl -OutFile $LocalCopy -UseBasicParsing }
+    catch { if ($PSCommandPath) { Copy-Item $PSCommandPath $LocalCopy -Force } }
+
+    if (Test-Path $LocalCopy) {
+        $cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$LocalCopy`" -AutoCleanupCheck"
+        schtasks /Create /TN $TaskName /TR $cmd /SC DAILY /ST 13:00 /F | Out-Null
+        Write-Host "[cctemp] dead-man switch armed: daily check, purge after $AutoCleanupDays days of no use." -ForegroundColor Cyan
+    } else {
+        Write-Host '[cctemp] WARNING: could not save local copy - auto-cleanup NOT armed; remove manually.' -ForegroundColor Red
+    }
 }
 
 Write-Host ''
