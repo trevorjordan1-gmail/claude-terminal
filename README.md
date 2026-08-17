@@ -115,8 +115,11 @@ Install (works from a ScreenConnect Backstage PowerShell):
 irm https://raw.githubusercontent.com/trevorjordan1-gmail/claude-terminal/main/windows/cctemp.ps1 | iex
 ```
 
-Remove when finished (or set `-AutoCleanupDays 7` at install time as a
-dead-man switch):
+A dead-man switch is armed by default: a daily task checks when Claude Code
+was last *used* (newest write under `~\.claude`) and purges everything only
+after **30 days of no use** — so an engagement that revives with a ticket
+keeps its install, and a forgotten one removes itself. Tune with
+`-AutoCleanupDays N` (0 disables). Remove immediately when finished:
 
 ```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/trevorjordan1-gmail/claude-terminal/main/windows/cctemp.ps1))) -Cleanup
