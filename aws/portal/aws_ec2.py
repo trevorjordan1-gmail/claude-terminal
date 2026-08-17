@@ -156,7 +156,12 @@ def set_idle_policy(instance_id: str, policy: str, minutes: int | None) -> None:
 
 
 def provision_status(instance_id: str) -> dict | None:
-    """Progress marker published by the instance's setup scripts, or None."""
+    """Progress marker published by the instance's setup scripts, or None.
+
+    A finished (pct>=100) or old marker is history, not status: auto-update
+    re-runs republish markers long after first boot, and showing "Ready 100%"
+    next to a "Getting ready…" badge on a later boot reads as a contradiction
+    (TJ hit exactly this)."""
     import json as _json
     import time as _time
     try:
@@ -164,6 +169,8 @@ def provision_status(instance_id: str) -> dict | None:
                              Key=f"status/{instance_id}.json")
         d = _json.loads(obj["Body"].read())
         elapsed_min = max(0.0, (_time.time() - float(d.get("ts", 0))) / 60)
+        if float(d.get("pct", 0)) >= 100 or elapsed_min > 120:
+            return None
         d["eta_left"] = max(0, round(float(d.get("eta_min", 0)) - elapsed_min))
         return d
     except Exception:

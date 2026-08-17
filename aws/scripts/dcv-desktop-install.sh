@@ -74,6 +74,9 @@ broker_port = 8445
 tls_strict = true
 ca_file = '/etc/dcv-session-manager-agent/dcvsmbroker_ca.pem'
 enable_query_logged_in_users = true
+# default 30s makes the broker take 30-90s to re-list a booted/resumed server
+# ("Almost ready…" limbo); 10s is documented-safe and cuts that ~2/3
+broker_update_interval = 10
 
 [log]
 level = 'info'

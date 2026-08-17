@@ -17,7 +17,9 @@
   <div class="prog"><div class="prog-fill" style="width:{{ m.progress.pct }}%"></div></div>
   <div class="sub" style="width:100%">{{ m.progress.label }} — {{ m.progress.pct }}%{% if m.progress.eta_left and m.progress.pct < 100 %}, about {{ m.progress.eta_left }} min left{% endif %}</div>
   {% elif m.waking %}
-  <div class="sub" style="width:100%">Restoring from Pause — usually 2–3 minutes; Connect appears when it's truly ready</div>
+  <div class="sub" style="width:100%">Coming up — usually 2–3 minutes; Connect appears when it's truly ready</div>
+  {% elif m.almost %}
+  <div class="sub" style="width:100%">Desktop is up — final checks, usually under a minute</div>
   {% elif m.css == "pending" and m.state == "running" %}
   <div class="sub" style="width:100%">Setting up — a brand-new terminal takes 20–30 minutes</div>
   {% endif %}
