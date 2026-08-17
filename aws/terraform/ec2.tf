@@ -68,6 +68,9 @@ resource "aws_launch_template" "desktop" {
   name          = "asp-desktop"
   image_id      = data.aws_ami.ubuntu_amd64.id
   instance_type = var.desktop_instance_type
+  # the portal's RunInstances uses the DEFAULT version — without this, every
+  # template change strands new terminals on v1 (bit us: throughput bump)
+  update_default_version = true
 
   iam_instance_profile {
     name = aws_iam_instance_profile.desktop.name
