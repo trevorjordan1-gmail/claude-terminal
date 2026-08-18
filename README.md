@@ -99,6 +99,30 @@ artifacts bucket and run this same kit per user (`is_dcv_terminal` gates the
 modules that don't apply). Start at
 [`aws/runbooks/build-tenant.md`](aws/runbooks/build-tenant.md).
 
+## Medical mode (Ai Build Medical) — regulated-data terminals
+
+An opt-in profile for HIPAA-adjacent engagements, DCV terminals only for now.
+The box is the compliance boundary: **Claude Code and claude-mem talk to
+Amazon Bedrock inside the tenant's own AWS account and to nothing else**, no
+provider API keys may exist on the box, and the desktop is visibly marked
+PHI-approved (wallpaper, shell banner, motd). No Claude login exists on such
+a box — credentials come from the instance role.
+
+Activation is state on the box, not a flag on a run (the fleet updater
+re-runs `get.sh` daily with no arguments): the platform writes
+`ASP_PROFILE=medical` into `/etc/asp-terminal.env`, or an operator flips a
+box by hand with `./bootstrap.sh --medical` (writes
+`/etc/claude-terminal/medical`). Region and model IDs come from
+`/etc/asp-terminal.env` (`ASP_REGION`, optional `ASP_BEDROCK_SONNET|OPUS|HAIKU`).
+`./verify.sh` grows a **medical mode** section whose bar is zero FAILs.
+
+What it pins: `/etc/claude-code/managed-settings.json` (Bedrock, region,
+model IDs; user settings cannot override), the same env in `/etc/bash.bashrc`
++ `/etc/profile.d/`, claude-mem's model/telemetry/cloud-sync settings, and a
+sweep that removes `ANTHROPIC_*`/`GEMINI_*`/`OPENROUTER_*` credential lines
+it finds. The tenant-side half (IAM, Bedrock zero-data-retention lock, DCV
+file-download deny) lives in `aws/` — see `aws/runbooks/build-tenant.md`.
+
 ## Windows: temporary troubleshooting install (`cctemp`) — not a terminal build
 
 Everything else in this repo builds a machine that *keeps* Claude Code. This

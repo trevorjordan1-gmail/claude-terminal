@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-18 — medical mode (Ai Build Medical), kit side
+
+- **New opt-in profile for regulated-data terminals (DCV only).** Activated by
+  state (`ASP_PROFILE=medical` in `/etc/asp-terminal.env` or
+  `./bootstrap.sh --medical` → `/etc/claude-terminal/medical`), three core
+  modules that skip everywhere else: `08-medical-bedrock` (Claude Code pinned
+  to Amazon Bedrock via `/etc/claude-code/managed-settings.json` + system env;
+  provider API keys swept off the box), `21-medical-claude-mem` (sonnet via
+  the CLI's aliases, telemetry + cloud sync off, credential strip),
+  `43-medical-cues` (PHI-approved wallpaper, shell banner, motd).
+  `claude_ready` is now true when Bedrock is pinned — plugins install during
+  bootstrap and no login reminder is printed. `verify.sh` gains a medical
+  section (bar: zero FAILs). Container-validated: full bootstrap twice on a
+  fake medical DCV box (all OK, idempotent) and once non-medical (modules
+  SKIP, nothing else changes). Design:
+  `docs/superpowers/specs/2026-08-18-medical-mode-design.md`. The aws/ half
+  (profile var, IAM, ZDR lock, DCV deny) is the next step.
+
 ## 2026-08-18 — platform: Chrome + streaming tuning land on main; kit follows the dock
 
 - **aws/ (merged from `aws-dcv-platform`):** Google Chrome (native deb) with a

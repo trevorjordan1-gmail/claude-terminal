@@ -26,6 +26,7 @@ file-by-file audit of two long-lived production machines (see
 | `windows/get.ps1` | Windows counterpart of `get.sh`: `irm … \| iex` on a Hyper-V host |
 | `windows/New-UbuntuHyperVVM.ps1` | interactive Gen-2 Ubuntu VM builder (host-side) |
 | `verify.sh` | read-only PASS/FAIL/SKIP state check |
+| `modules/core/08-medical-bedrock.sh`, `21-medical-claude-mem.sh`, `43-medical-cues.sh` | medical-profile modules; skip unless `is_medical_terminal` (README "Medical mode") |
 | `audit/system-audit.sh` | full machine snapshot for diffing two boxes |
 | `docs/superpowers/` | original design spec + implementation plan (historical) |
 
@@ -51,8 +52,11 @@ Modules are **sourced inside a subshell** by `bootstrap.sh`. Rules:
    already adds (e.g. the claude-login reminder).
 4. Available helpers: `have`, `pkg_installed`, `apt_install` (auto
    `apt-get update` once per run), `append_block FILE MARKER <<'EOF'`
-   (idempotent marker-delimited config blocks), `claude_ready` (installed
-   *and* logged in), `log/warn`. After adding an apt repo,
+   (idempotent marker-delimited config blocks; `sudo_append_block` is the
+   same for root-owned files), `claude_ready` (installed *and* logged in —
+   or pinned to Bedrock: `claude_bedrock_ready`), `is_dcv_terminal` /
+   `is_medical_terminal` / `asp_env KEY` (platform facts from
+   `/etc/asp-terminal.env`), `log/warn`. After adding an apt repo,
    `rm -f "$CT_TMP/apt-updated"` to force a re-update.
    **gsettings/dconf writes go through `gui_conf`** (gate with
    `gui_conf_ready || skip`): it uses the live user bus when one exists and
