@@ -28,6 +28,7 @@ umask 077
   echo "ASP_CUSTOMER=$ASP_CUSTOMER"
   echo "ASP_BUCKET=$ASP_BUCKET"
   echo "ASP_PROFILE=${ASP_PROFILE:-standard}"
+  echo "ASP_BRAND=${ASP_BRAND:-Claude Code Terminals}"
   echo "ASP_BROKER_SHORT=$(hostname -s)"
   echo "$CONF"    | python3 -c 'import json,sys; [print(f"{k}={v}") for k,v in json.load(sys.stdin).items()]'
   echo "$SECRETS" | python3 -c 'import json,sys; [print(f"{k}={v}") for k,v in json.load(sys.stdin).items()]'

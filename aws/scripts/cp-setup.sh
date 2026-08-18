@@ -38,4 +38,20 @@ if aws s3 ls "s3://$ASP_BUCKET/scripts/portal-deploy.sh" >/dev/null 2>&1; then
   /opt/asp/portal-deploy.sh || echo "WARN: portal deploy failed — re-run via SSM"
 fi
 
+
+# ---- tenant extension hook (issue #1): sanctioned per-tenant customization ----
+# If the tenant bucket carries scripts/tenant-custom-cp.sh, run it LAST. Contract: the
+# operator owns the file, it is idempotent (re-runs on every release), failure
+# is logged + surfaced but non-fatal, and upstream never edits it. Same trust
+# boundary as this script — the same bucket writers control both.
+if aws s3 cp "s3://$ASP_BUCKET/scripts/tenant-custom-cp.sh" "/opt/asp/tenant-custom-cp.sh" >/dev/null 2>&1; then
+  chmod +x "/opt/asp/tenant-custom-cp.sh"
+  if bash "/opt/asp/tenant-custom-cp.sh" >> /var/log/asp-tenant-custom.log 2>&1; then
+    echo "tenant-custom-cp.sh: ok"
+  else
+    rc=$?
+    echo "WARN: tenant-custom-cp.sh failed (rc=$rc) — see /var/log/asp-tenant-custom.log" >&2
+  fi
+fi
+
 echo "cp-setup complete"

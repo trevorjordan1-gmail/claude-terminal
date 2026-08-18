@@ -44,6 +44,7 @@ resource "aws_instance" "controlplane" {
       ASP_BUCKET      = var.artifacts_bucket
       ASP_CERT_EMAIL  = var.cert_email
       ASP_PROFILE     = var.profile
+      ASP_BRAND       = var.brand
     }
   })
 

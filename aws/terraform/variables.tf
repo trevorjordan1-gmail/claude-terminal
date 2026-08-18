@@ -36,6 +36,11 @@ variable "artifacts_bucket" {
   description = "Pre-existing S3 bucket holding setup scripts + portal builds (e.g. <org>-asp-artifacts-<account-id>)"
 }
 
+variable "brand" {
+  description = "Portal title/header text (issue #1). Neutral default; set per tenant to brand the portal without touching templates."
+  default     = "Claude Code Terminals"
+}
+
 variable "profile" {
   description = "Terminal profile for this tenant: standard, or medical (Ai Build Medical — Claude Code pinned to Bedrock, DCV file-download denied, ZDR guard). Reaches every terminal as ASP_PROFILE."
   default     = "standard"

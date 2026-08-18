@@ -133,6 +133,38 @@ why in the module header.
 8. Validate on a real box before calling it done; `./verify.sh` is the
    scorecard.
 
+## Operator loop (issues → branch → merge → tag)
+
+The platform operator runs tenants downstream and finds fixes there; the
+product lives upstream on `main`. The loop (issue #1):
+
+1. **Issue first.** Every request or fix from an operator/agent is a GitHub
+   issue on this repo (context, root cause, proposal, acceptance). Label the
+   area (`area:kit` / `area:aws` / `area:docs`) and `operator`. Issues are
+   public and *not* covered by pii-guard: **no client codes, hostnames,
+   account IDs or people** in issue text, branch names or commit messages —
+   `acme`/`example.com` placeholders only. "TJ"-style initials are fine.
+2. **Branch** `<area>/<short-slug>` (e.g. `aws/polkit-aptdaemon`) from
+   current `main`, referencing the issue; test against the pilot tenant from
+   the branch tree (`ASP_TENANTS=… aws/scripts/rollout.sh`).
+3. **Merge**: the repo admin reviews and merges to `main` (`Fixes #N` in the
+   merge commit closes the issue). Main is production — validate before
+   merging (shellcheck, portal tests, `terraform validate`, container runs
+   for kit changes).
+4. **Tag every shipping merge**: `vYYYY.MM.DD` (`-1`, `-2` for more than one
+   a day). `rollout.sh` stamps tenants with `git describe`, so tags are what
+   make per-tenant version records meaningful. Roll tenants forward
+   tag-by-tag; the admin comments the merge sha + tag on the issue.
+5. **Variance is config, not branches.** Anything a tenant needs that main
+   lacks is first assumed to be a generic feature behind config
+   (`profile`, `GROUP_BUILD_ENGINEERS`, `ASP_BRAND`, `ASP_TENANTS`). True
+   one-offs go in the tenant's own `scripts/tenant-custom.sh` /
+   `tenant-custom-cp.sh` in the artifacts bucket — run last by
+   `desktop-setup.sh` / `cp-setup.sh` if present, idempotent, non-fatal,
+   logged to `/var/log/asp-tenant-custom.log`, never edited upstream. Tenant
+   identity (tfvars, `tenants.json`, backend, SSM config) stays in the
+   operator's private overlay, never here.
+
 ## Hard rules
 
 - **No secrets or machine identifiers, ever** — no hostnames, IPs, printer
