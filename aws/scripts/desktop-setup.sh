@@ -5,9 +5,11 @@
 #   chained dcv-desktop-install.sh and the kit; ASP_OWNER_UPN/ASP_CUSTOMER ride
 #   along for humans debugging the box.
 set -uxo pipefail
+# shellcheck source=/dev/null  # written by the platform at boot; not in the repo
 source /etc/asp-terminal.env
 export DEBIAN_FRONTEND=noninteractive
-[ -f /opt/asp/progress.sh ] && . /opt/asp/progress.sh || prog() { :; }
+# shellcheck source=/dev/null  # progress helper written by user_data at boot
+if [ -f /opt/asp/progress.sh ]; then . /opt/asp/progress.sh; else prog() { :; }; fi
 
 # ---- 1. local users (no passwords — DCV auth is broker tokens only) ----
 # The owner gets sudo; every other tenant user exists too, because DCV session
@@ -225,7 +227,7 @@ if [ ! -d "/home/$ASP_LOCAL_USER/claude-terminal" ]; then
     > /var/log/asp-workbench.log 2>&1 || true
 fi
 if [ -x "/home/$ASP_LOCAL_USER/.local/bin/claude" ]; then
-  prog 70 "Workbench installed (claude $(sudo -u $ASP_LOCAL_USER /home/$ASP_LOCAL_USER/.local/bin/claude --version 2>/dev/null | awk '{print $1}'))" 6
+  prog 70 "Workbench installed (claude $(sudo -u "$ASP_LOCAL_USER" "/home/$ASP_LOCAL_USER/.local/bin/claude" --version 2>/dev/null | awk '{print $1}'))" 6
   su - "$ASP_LOCAL_USER" -c 'cd ~/claude-terminal && bash verify.sh' >> /var/log/asp-workbench.log 2>&1 || true
 else
   prog 70 "WORKBENCH FAILED - claude missing, see /var/log/asp-workbench.log" 6
@@ -237,7 +239,8 @@ prog 80 "Installing remote display (DCV)" 4
 # claude-terminal installs to ~/.local/bin, which only lands on PATH via
 # ~/.profile at a GDM login — DCV virtual sessions skip that, so pin it in
 # .bashrc for gnome-terminal's non-login shells
-grep -q 'local/bin' "/home/$ASP_LOCAL_USER/.bashrc" 2>/dev/null ||   echo 'export PATH="$HOME/.local/bin:$PATH"' >> "/home/$ASP_LOCAL_USER/.bashrc"
+# shellcheck disable=SC2016  # the $HOME must reach .bashrc literally
+grep -q 'local/bin' "/home/$ASP_LOCAL_USER/.bashrc" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "/home/$ASP_LOCAL_USER/.bashrc"
 chown "$ASP_LOCAL_USER:$ASP_LOCAL_USER" "/home/$ASP_LOCAL_USER/.bashrc"
 
 # ---- 4. DCV server + Session Manager agent (layered script; iterated separately) ----
@@ -286,4 +289,5 @@ UNIT
 systemctl daemon-reload
 systemctl enable --now asp-auto-update.timer
 
+prog 100 "Ready" 0
 echo "desktop-setup complete"

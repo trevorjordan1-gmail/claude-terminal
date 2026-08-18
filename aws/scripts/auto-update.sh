@@ -3,6 +3,7 @@
 # Applies a release only when: a newer version is published to the tenant
 # bucket AND nobody is connected (defers like WU under active use).
 set -uo pipefail
+# shellcheck source=/dev/null  # written by the platform at boot; not in the repo
 source /etc/asp-terminal.env
 WANT=$(aws s3 cp "s3://$ASP_BUCKET/release/version" - 2>/dev/null) || exit 0
 CUR=$(cat /opt/asp/applied-version 2>/dev/null || echo none)

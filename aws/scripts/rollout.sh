@@ -3,7 +3,7 @@
 # Usage: rollout.sh portal|scripts|workbench|all [--tenant NAME]
 # The tenants.json registry IS the "did we get everywhere" checklist.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 LAYER="${1:?usage: rollout.sh portal|scripts|workbench|all [--tenant NAME]}"
 ONLY="${3:-}"; [ "${2:-}" = "--tenant" ] && ONLY="$3"
 VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo unknown)
@@ -12,6 +12,7 @@ VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo unknown)
 TENANTS_FILE="${ASP_TENANTS:-tenants.json}"
 echo "== rollout $LAYER @ $VERSION =="
 FAIL=0
+# shellcheck disable=SC2034  # PORTAL is a registry column we read for shape, not (yet) used here
 while IFS=$'\t' read -r NAME PROFILE REGION BUCKET CPID PORTAL; do
   [ -n "$ONLY" ] && [ "$NAME" != "$ONLY" ] && continue
   export AWS_PROFILE=$PROFILE AWS_DEFAULT_REGION=$REGION
@@ -32,16 +33,25 @@ while IFS=$'\t' read -r NAME PROFILE REGION BUCKET CPID PORTAL; do
     CMD=$(aws ssm send-command --instance-ids "$CPID" --document-name AWS-RunShellScript \
       --timeout-seconds 300 --parameters 'commands=["bash /opt/asp/portal-deploy.sh >/dev/null 2>&1; sleep 3; curl -s http://127.0.0.1:8080/healthz"]' \
       --query Command.CommandId --output text) || ok=0
-    sleep 25
+    # portal-deploy pip-installs, so wait for the invocation to finish (up to
+    # ~3 min) instead of a fixed sleep that reports a phantom VERSION MISMATCH
+    OUT=""
+    for _ in $(seq 1 36); do
+      sleep 5
+      ST=$(aws ssm get-command-invocation --command-id "$CMD" --instance-id "$CPID" \
+        --query Status --output text 2>/dev/null)
+      case "$ST" in Success|Failed|TimedOut|Cancelled) break ;; esac
+    done
     OUT=$(aws ssm get-command-invocation --command-id "$CMD" --instance-id "$CPID" \
       --query StandardOutputContent --output text 2>/dev/null)
-    echo "   portal healthz: $OUT"
+    echo "   portal healthz: $OUT (invocation: ${ST:-unknown})"
     echo "$OUT" | grep -q "\"version\":\"$VERSION\"" || { echo "   VERSION MISMATCH"; ok=0; }
   fi
   if [ "$LAYER" = "workbench" ] || [ "$LAYER" = "all" ]; then
     IDS=$(aws ec2 describe-instances --filters Name=tag:Role,Values=desktop Name=instance-state-name,Values=running \
       --query 'Reservations[].Instances[].InstanceId' --output text | tr '\t' ' ')
     for I in $IDS; do
+      # shellcheck disable=SC2016  # JMESPath backticks, not shell expansion
       U=$(aws ec2 describe-instances --instance-ids "$I" --query 'Reservations[0].Instances[0].Tags[?Key==`LocalUser`]|[0].Value' --output text)
       aws ssm send-command --instance-ids "$I" --document-name AWS-RunShellScript --timeout-seconds 900 \
         --parameters "commands=[\"su - $U -c 'curl -fsSL https://raw.githubusercontent.com/trevorjordan1-gmail/claude-terminal/main/get.sh | bash' >> /var/log/asp-workbench.log 2>&1 && echo workbench-updated\"]" \
@@ -49,7 +59,7 @@ while IFS=$'\t' read -r NAME PROFILE REGION BUCKET CPID PORTAL; do
     done
     [ -z "$IDS" ] && echo "   no running desktops (paused ones update on next natural wake via SSM rerun, or start them first)"
   fi
-  [ $ok = 1 ] && echo "   OK" || { echo "   FAILED"; FAIL=1; }
+  if [ "$ok" = 1 ]; then echo "   OK"; else echo "   FAILED"; FAIL=1; fi
 done < <(python3 -c "
 import json
 for t in json.load(open('$TENANTS_FILE')):

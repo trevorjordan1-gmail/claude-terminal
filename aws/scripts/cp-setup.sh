@@ -4,13 +4,14 @@
 #   ASP_REGION ASP_BUCKET ASP_CERT_EMAIL (cp-tls.sh) ASP_PROFILE (portal-deploy.sh)
 #   [ASP_DNS_ZONE is written too but unused here]
 set -uxo pipefail
+# shellcheck source=/dev/null  # written by the platform at boot; not in the repo
 source /etc/asp-terminal.env
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -y
 apt-get install -y --no-install-recommends \
   openjdk-17-jre-headless nginx python3-venv python3-pip \
-  certbot python3-certbot-dns-route53 unzip jq
+  certbot unzip jq
 
 systemctl enable --now nginx
 

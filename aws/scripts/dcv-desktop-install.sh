@@ -3,9 +3,11 @@
 # Config keys per docs.aws.amazon.com/dcv, verified 2026-08-15.
 # Idempotent; re-runnable via SSM.
 set -uxo pipefail
+# shellcheck source=/dev/null  # written by the platform at boot; not in the repo
 source /etc/asp-terminal.env
 export DEBIAN_FRONTEND=noninteractive
-[ -f /opt/asp/progress.sh ] && . /opt/asp/progress.sh || prog() { :; }
+# shellcheck source=/dev/null  # progress helper written by user_data at boot
+if [ -f /opt/asp/progress.sh ]; then . /opt/asp/progress.sh; else prog() { :; }; fi
 
 # Always-latest: the CDN root serves unversioned aliases (see dcv-cp-install.sh
 # for the why). Installs are dpkg-guarded, so re-runs never re-download.
@@ -142,5 +144,5 @@ systemctl restart dcv-session-manager-agent
 
 sleep 10
 grep -o 'sessionsUpdateResponse.*' /var/log/dcv-session-manager-agent/agent.log | tail -2 || true
-prog 100 "Ready" 0
+prog 97 "Remote display up — final steps" 1
 echo "dcv-desktop-install complete"
