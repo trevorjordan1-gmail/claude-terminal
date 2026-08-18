@@ -116,11 +116,19 @@ if have gsettings && gsettings list-schemas 2>/dev/null | grep -q '^org\.gnome\.
     else
         f "idle-delay not 0"
     fi
-    FAVS="['firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop']"
-    if [ "$(gsettings get org.gnome.shell favorite-apps 2>/dev/null)" = "$FAVS" ]; then
-        p "dock favorites converged (Firefox, Files, Terminal)"
+    # DCV hosts lock the dock to Chrome (no Firefox snap there); everywhere
+    # else the kit pins Firefox. Same three-slot dock, different browser.
+    if is_dcv_terminal; then
+        FAVS="['google-chrome.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop']"
+        FAVS_LABEL="Chrome, Files, Terminal (host-managed)"
     else
-        f "dock favorites are $(gsettings get org.gnome.shell favorite-apps 2>/dev/null || echo unreadable)"
+        FAVS="['firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop']"
+        FAVS_LABEL="Firefox, Files, Terminal"
+    fi
+    if [ "$(gsettings get org.gnome.shell favorite-apps 2>/dev/null)" = "$FAVS" ]; then
+        p "dock favorites converged ($FAVS_LABEL)"
+    else
+        f "dock favorites are $(gsettings get org.gnome.shell favorite-apps 2>/dev/null || echo unreadable) — expected $FAVS_LABEL"
     fi
     if have dconf && [ -n "$(dconf dump /org/gnome/terminal/legacy/ 2>/dev/null)" ]; then
         p "terminal prefs present (seeded or user-customized)"

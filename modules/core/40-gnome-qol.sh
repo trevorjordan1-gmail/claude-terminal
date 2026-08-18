@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# ct-desc: GNOME QoL — screen lock/blanking off; dock = Firefox, Files, Terminal (no App Center/Help)
+# ct-desc: GNOME QoL — screen lock/blanking off; dock = browser, Files, Terminal (no App Center/Help)
 
 have gsettings || skip "gsettings not available (no GNOME here?)"
 gsettings list-schemas 2>/dev/null | grep -q '^org\.gnome\.shell$' \
@@ -14,6 +14,12 @@ gui_conf gsettings set org.gnome.desktop.session idle-delay 0 \
 # Dock favorites, converged from the reference machines: Terminal pinned,
 # App Center (snap-store) and Help (yelp) gone. Re-runs re-converge — if you
 # want another permanent pin, add it here.
+# DCV terminals are the exception: the host provisions Google Chrome (no
+# Firefox snap) and dconf-LOCKS favorite-apps to Chrome/Files/Terminal, so a
+# per-user pin is silently ignored there — leave the dock to the host.
+if is_dcv_terminal; then
+    ok "lock/blanking off; dock is host-managed on DCV (Chrome, Files, Terminal)"
+fi
 FAVS="['firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop']"
 if [ "$(gsettings get org.gnome.shell favorite-apps 2>/dev/null)" != "$FAVS" ]; then
     gui_conf gsettings set org.gnome.shell favorite-apps "$FAVS" \
