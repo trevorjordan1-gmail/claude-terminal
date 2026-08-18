@@ -39,12 +39,51 @@ preserves it anyway). Per-terminal exceptions are on each terminal below.</p>
 
 <h2>Add a user</h2>
 <div class="card">
-  <form class="share" method="post" action="/admin/add" style="border:0;padding:0;margin:0">
-    <input type="email" name="owner_upn" placeholder="user email (Entra UPN)" required>
-    <input type="text" name="local_user" placeholder="linux user (optional)"
-           pattern="[a-z][a-z0-9-]{1,30}" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:.4rem .6rem;font-size:.85rem">
-    <button>Create {{ next_name }}</button>
+  <form class="share" method="post" action="/admin/add" style="border:0;padding:0;margin:0;position:relative;flex-wrap:wrap">
+    <input type="text" id="user-q" placeholder="find user: name or email…" autocomplete="off"
+           style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:.4rem .6rem;font-size:.85rem;min-width:16rem">
+    <input type="hidden" name="owner_upn" id="owner-upn">
+    <button id="add-btn" disabled>Create {{ next_name }}</button>
+    <div id="user-results" style="position:absolute;top:2.4rem;left:0;z-index:5;background:var(--bg);border:1px solid var(--line);border-radius:7px;min-width:20rem;display:none;overflow:hidden"></div>
   </form>
+  <script>
+  (() => {
+    const q = document.getElementById("user-q"), box = document.getElementById("user-results"),
+          upn = document.getElementById("owner-upn"), btn = document.getElementById("add-btn");
+    let t = null;
+    const pick = (u) => { upn.value = u.upn; q.value = `${u.name} — ${u.upn}`; btn.disabled = false; box.style.display = "none"; };
+    const row = (html, fn) => { const d = document.createElement("div");
+      d.style.cssText = "padding:.45rem .7rem;cursor:pointer;font-size:.85rem;border-top:1px solid var(--line)";
+      d.innerHTML = html; d.onmousedown = fn; return d; };
+    q.addEventListener("input", () => {
+      upn.value = ""; btn.disabled = true; clearTimeout(t);
+      const v = q.value.trim();
+      if (v.length < 2) { box.style.display = "none"; return; }
+      t = setTimeout(async () => {
+        let data = { users: [], hidden: [] };
+        try { data = await (await fetch("/admin/user-search?q=" + encodeURIComponent(v))).json(); } catch (e) {}
+        box.innerHTML = "";
+        data.users.forEach(u => box.appendChild(row(`<b>${u.name}</b> <span style="opacity:.65">${u.upn}</span>`, () => pick(u))));
+        const hid = data.hidden || [];
+        if (hid.length) {
+          const reveal = row(`<span style="opacity:.6">${hid.length} hidden (service/unlicensed/guest/disabled) — <u>show</u></span>`, () => {});
+          reveal.onmousedown = (e) => { e.preventDefault();
+            reveal.remove();
+            hid.forEach(u => box.appendChild(row(
+              `<span style="opacity:.75"><b>${u.name}</b> ${u.upn} <span style="opacity:.6;font-size:.75em">[${u.why}]</span></span>`, () => pick(u))));
+          };
+          box.appendChild(reveal);
+        }
+        if (!data.users.length && !hid.length && v.includes("@"))
+          box.appendChild(row(`use “<b>${v}</b>” as the email`, () => pick({ name: v.split("@")[0], upn: v })));
+        if (!data.users.length && !hid.length && !v.includes("@"))
+          box.appendChild(row(`<span style="opacity:.65">${data.error || "no matches — keep typing, or enter a full email"}</span>`, () => {}));
+        box.style.display = "block";
+      }, 250);
+    });
+    q.addEventListener("blur", () => setTimeout(() => box.style.display = "none", 250));
+  })();
+  </script>
 </div>
 <p class="note" style="margin-top:-.3rem">Creates the terminal ({{ next_name }}) and assigns it —
 the user signs in with their normal Microsoft account and sees only their own terminal.

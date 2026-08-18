@@ -1,6 +1,7 @@
 """Portal configuration — read once from /etc/asp-portal.env (KEY=VALUE lines)."""
 
 import os
+import re
 
 ENV_FILE = os.environ.get("ASP_PORTAL_ENV", "/etc/asp-portal.env")
 
@@ -75,5 +76,9 @@ except OSError:
 
 
 def local_user(upn: str) -> str:
-    """Map an Entra UPN to the desktop's local Linux user (PoC: mailbox part)."""
-    return upn.split("@")[0].lower()
+    """Map an Entra UPN to the desktop's local Linux user: the mailbox part,
+    sanitized to a valid Linux name (dots and other invalid chars dropped,
+    leading non-letters trimmed). Provisioning and session mapping both use
+    this, so the two can never disagree."""
+    name = re.sub(r"[^a-z0-9-]", "", upn.split("@")[0].lower())
+    return name.lstrip("-0123456789")[:31] or "user"   # Linux caps names at 32

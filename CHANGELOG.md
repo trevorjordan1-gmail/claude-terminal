@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-18 — portal: pick the owner from the directory (#5)
+
+- **Add-user searches Entra as you type** (name / UPN / mail prefix; Graph
+  `$filter` with the app registration's `User.Read.All` app role, admin-only,
+  8-result cap, quotes stripped; unlicensed / `.onmicrosoft.com` / guest /
+  disabled accounts hidden but revealable). Degrades to "type the full
+  email" if Graph is unavailable. The Linux-user field is gone: the local
+  user always derives from the UPN, now sanitized to a valid name (dots and
+  invalid chars dropped, leading non-letters trimmed, 31-char cap) — the same
+  `config.local_user()` for provisioning and session mapping.
+- **Admin hardening on merge:** owner checks in revoke / join / dcvfile accept
+  the current mapping *and* the `LocalUser` tag of machines the user owns
+  (`_my_locals()`), so terminals provisioned under the older mapping (dotted
+  mailbox names) keep working for their owners. 3 tests (23 total).
+
 ## 2026-08-18 — operator loop (#1), menu-first cc on DCV (#3), display-scaling guidance (#4)
 
 - **Issues are the handoff channel now.** `docs/DEVELOPMENT.md` "Operator

@@ -11,6 +11,7 @@ import urllib.parse
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
+import httpx
 import msal
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
@@ -97,6 +98,20 @@ def _may_use_machine(user: dict, m: dict) -> bool:
     )
 
 
+def _my_locals(user: dict) -> set:
+    """Every Linux user this person may act as: the current UPN mapping plus
+    the LocalUser tag of each machine they own/may use. Terminals provisioned
+    under an older mapping (e.g. before dots were dropped) keep working."""
+    locals_ = {config.local_user(user["upn"])}
+    try:
+        for m in aws_ec2.list_desktops():
+            if m.get("local_user") and _may_use_machine(user, m):
+                locals_.add(m["local_user"])
+    except Exception:
+        pass  # AWS hiccup: fall back to the derived name only
+    return locals_
+
+
 def _may_view(user: dict) -> bool:
     return (
         _is_admin(user)
@@ -150,6 +165,72 @@ def logout():
     resp = RedirectResponse("/login")
     resp.delete_cookie(SESSION_COOKIE)
     return resp
+
+
+_graph_tok: dict = {"value": None, "exp": 0}
+
+
+def _graph_token() -> str:
+    """App-only Graph token (client credentials). The app registration holds
+    User.Read.All as an application permission, consented at tenant setup."""
+    if _graph_tok["value"] and time.time() < _graph_tok["exp"] - 60:
+        return _graph_tok["value"]
+    result = _msal_app().acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
+    if "access_token" not in result:
+        raise RuntimeError(result.get("error_description", "graph token failed"))
+    _graph_tok["value"] = result["access_token"]
+    _graph_tok["exp"] = time.time() + int(result.get("expires_in", 3600))
+    return _graph_tok["value"]
+
+
+@app.get("/admin/user-search")
+def admin_user_search(request: Request, q: str = ""):
+    """Live directory search for the add-user form: first/last/display name
+    or UPN/mail prefix, admin-only, capped small."""
+    _require_admin(request)
+    q = q.strip()[:64].replace("'", "")
+    if len(q) < 2:
+        return {"users": []}
+    flt = " or ".join(
+        f"startswith({f},'{q}')"
+        for f in ("displayName", "givenName", "surname", "userPrincipalName", "mail"))
+    try:
+        r = httpx.get(
+            "https://graph.microsoft.com/v1.0/users",
+            params={"$filter": flt,
+                    "$select": "displayName,userPrincipalName,accountEnabled,"
+                               "assignedLicenses,userType",
+                    "$top": "15"},
+            headers={"Authorization": f"Bearer {_graph_token()}"}, timeout=10)
+        r.raise_for_status()
+        # Real sign-in users vs the directory's plumbing. Rules from a live
+        # tenant survey: unlicensed accounts (service/automation/shared
+        # mailboxes/guests) and .onmicrosoft.com UPNs (admin/service accounts —
+        # some ARE licensed, so both signals are needed) and disabled accounts
+        # are hidden but revealable, never silently dropped.
+        users, hidden = [], []
+        for u in r.json().get("value", []):
+            upn = u.get("userPrincipalName") or ""
+            if not upn:
+                continue
+            why = []
+            if not (u.get("assignedLicenses") or []):
+                why.append("unlicensed")
+            if ".onmicrosoft.com" in upn.lower():
+                why.append("service")
+            if (u.get("userType") or "") == "Guest":
+                why.append("guest")
+            if not u.get("accountEnabled", True):
+                why.append("disabled")
+            row = {"name": u.get("displayName") or "", "upn": upn}
+            if why:
+                hidden.append({**row, "why": "/".join(why)})
+            else:
+                users.append(row)
+        return {"users": users[:8], "hidden": hidden[:8]}
+    except Exception:
+        # directory hiccup must never block adds — the form accepts a typed email
+        return {"users": [], "hidden": [], "error": "directory search unavailable — type the full email"}
 
 
 # ---------- pages ----------
@@ -249,13 +330,14 @@ def home(request: Request):
 
     # joinable sessions: any active session where I'm admin or have a grant
     my_local = config.local_user(user["upn"])
+    my_locals = _my_locals(user)
     joinable = []
     try:
         for s in broker.describe_sessions():
             if s.get("State") not in ("READY", "CREATING"):
                 continue
             owner = s.get("Owner", "")
-            if owner == my_local:
+            if owner in my_locals:
                 continue
             granted = _grants.get(s.get("Id", ""), {}).get(my_local)
             if _is_admin(user) or granted:
@@ -434,7 +516,7 @@ def revoke(request: Request, session_id: str, guest_local: str):
     session = next((s for s in broker.describe_sessions() if s.get("Id") == session_id), None)
     if not session:
         return RedirectResponse("/", status_code=303)
-    if session.get("Owner") != config.local_user(user["upn"]) and not _is_admin(user):
+    if session.get("Owner") not in _my_locals(user) and not _is_admin(user):
         raise HTTPException(403, "not your session")
     grants = _grants.get(session_id, {})
     grants.pop(guest_local, None)
@@ -473,11 +555,11 @@ def join(request: Request, session_id: str):
 @app.get("/dcvfile/{session_id}/{connect_user}")
 def dcv_file(request: Request, session_id: str, connect_user: str):
     user = _require_user(request)
-    my_local = config.local_user(user["upn"])
-    if connect_user != my_local and not _is_admin(user):
+    my_locals = _my_locals(user)
+    if connect_user not in my_locals and not _is_admin(user):
         # owners fetch their own file; guests fetch theirs
         for s in broker.describe_sessions():
-            if s.get("Id") == session_id and s.get("Owner") == my_local:
+            if s.get("Id") == session_id and s.get("Owner") in my_locals:
                 break
         else:
             raise HTTPException(403, "not yours")
