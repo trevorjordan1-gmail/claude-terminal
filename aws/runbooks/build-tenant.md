@@ -313,10 +313,55 @@ broker AVAILABLE both lie during the ~1.5–3.5 min RAM restore).
 - Share grants live in portal memory (PoC): a portal restart clears the grant
   *list* (existing DCV connections continue; re-share to re-grant).
 
+## 11.6 Medical profile (Ai Build Medical — regulated data)
+
+Opt-in per tenant. What it changes: every terminal boots with
+`ASP_PROFILE=medical` (the kit then pins Claude Code + claude-mem to Bedrock
+in THIS account, sweeps API keys, brands the desktop PHI-approved — see the
+repo README "Medical mode"), the desktop role may invoke Claude on Bedrock,
+DCV sessions deny `file-download` + `printer` (owner and guests), and a
+zero-data-retention lock keeps Fable/Mythos-tier models — the ones that
+require provider data sharing — unavailable.
+
+Build:
+1. `profile = "medical"` in the tenant tfvars; `terraform apply`. (Standard
+   tenants: nothing changes; `aws_ebs_encryption_by_default` is applied to
+   ALL tenants from now on.)
+2. **Enable Anthropic model access once** in the Bedrock console for the
+   tenant Region (the instance role only gets `ViewSubscriptions`, on
+   purpose).
+3. `aws/scripts/bedrock-zdr.sh --apply --region <R>` (with the tenant
+   profile), then `--check`: retention `none`, EBS default on, invocation
+   logging off, a Fable request refused. If `--check` says it could not prove
+   the Fable exclusion, pass `--fable-id` with the Region's actual ID.
+4. Deploy the control plane / portal as usual — `ASP_PROFILE` flows
+   automatically (`portal-deploy.sh` → `/etc/asp-portal.env`).
+5. Optional: `terraform output -raw bedrock_zdr_scp_json` → hand to the
+   client's AWS Organization admin. Standalone accounts have no SCP; be
+   plain with the client that their own account admins could weaken the
+   retention setting (the role-level guard stops the platform's roles, not
+   humans) — `--check` is the audit.
+
+Acceptance on a fresh medical terminal: `~/claude-terminal/verify.sh` zero
+FAILs (medical section included), first login shows the PHI wallpaper +
+shell banner and `claude` answers with no login prompt, a DCV client cannot
+download a file from the session, and one claude-mem compression cycle shows
+egress only to Bedrock endpoints.
+
+Offboarding a medical user/terminal — the wipe list matters when a box is
+kept or repurposed rather than terminated (termination = encrypted EBS
+crypto-shred, plus the portal's Remove-user path): `~/.claude-mem/` (memory
+DB + Chroma — PHI store), `~/.claude/` (project transcripts are PHI too),
+`~/.cache/claude-cli-nodejs`, and the home directory in general. Never
+snapshot a medical terminal on removal.
+
 ## 12. Teardown
 
 `terraform destroy` in the tenant, delete the two buckets, the 3 Entra groups,
 the app registration, the CF A records, and the SSM `/asp/*` params.
+`aws_ebs_encryption_by_default.this` has `prevent_destroy` — it is
+account/Region-wide, so `terraform state rm aws_ebs_encryption_by_default.this`
+first (leaves the setting ON, which is what you want), then destroy.
 
 ## Known open items (update as they land)
 

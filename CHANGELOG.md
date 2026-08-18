@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-08-18 — medical mode (Ai Build Medical), aws/ side
+
+- **`profile = "medical"` per tenant.** One terraform variable reaches every
+  terminal as `ASP_PROFILE` (control plane env → `portal-deploy.sh` →
+  portal `config.PROFILE` → new `_terminal_env()` used by both provisioners
+  — the duplicated env block is gone). Medical-only IAM (`count`): the
+  desktop role may `InvokeModel*` on Anthropic Claude models + resolve
+  inference profiles; both roles carry a guard that denies weakening Bedrock
+  data retention or enabling model-invocation logging. `bedrock-zdr.sh
+  --apply/--check` sets and audits zero-data-retention (no Terraform resource
+  exists). Output `bedrock_zdr_scp_json` for clients with an Organization.
+- **DCV lockdown on medical tenants:** broker permissions append
+  `%any% deny file-download printer` (owner and guests; `deny` is final);
+  `desktop-setup.sh` writes the same into `/etc/dcv/default.perm` (what
+  `verify.sh` asserts).
+- **All tenants:** `aws_ebs_encryption_by_default` (with `prevent_destroy`;
+  runbook §12 has the teardown step).
+- Runbook §11.6: build, verify, offboard (wipe list incl. `~/.claude-mem/`
+  and `~/.claude/`). Portal tests: 17 (7 new).
+
 ## 2026-08-18 — medical mode (Ai Build Medical), kit side
 
 - **New opt-in profile for regulated-data terminals (DCV only).** Activated by
