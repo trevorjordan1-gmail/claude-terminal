@@ -199,3 +199,74 @@ resource "aws_iam_instance_profile" "desktop" {
   name = "asp-desktop"
   role = aws_iam_role.desktop.name
 }
+
+# ---------- medical profile (count-gated; standard tenants get none of this) ----------
+# Terminals call Claude on Bedrock with the instance role. Allow-list is
+# "any Anthropic Claude model": which models are USABLE is decided by the
+# account's Bedrock data-retention mode (none → Fable/Mythos unavailable),
+# not by IAM — see aws/scripts/bedrock-zdr.sh.
+data "aws_iam_policy_document" "desktop_bedrock" {
+  statement {
+    sid     = "InvokeClaudeOnBedrock"
+    actions = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+    resources = [
+      "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
+      "arn:aws:bedrock:${var.region}:${data.aws_caller_identity.current.account_id}:inference-profile/*.anthropic.claude-*",
+    ]
+  }
+  statement {
+    sid       = "ResolveInferenceProfiles"
+    actions   = ["bedrock:ListInferenceProfiles", "bedrock:GetInferenceProfile"]
+    resources = ["*"]
+  }
+  statement {
+    sid       = "SeeModelSubscriptions"
+    actions   = ["aws-marketplace:ViewSubscriptions"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "desktop_bedrock" {
+  count  = var.profile == "medical" ? 1 : 0
+  name   = "asp-desktop-bedrock"
+  role   = aws_iam_role.desktop.id
+  policy = data.aws_iam_policy_document.desktop_bedrock.json
+}
+
+# Guard: nothing running under these roles may weaken zero-data-retention or
+# switch on model-invocation logging (which would persist prompts — PHI — to
+# S3/CloudWatch). Account admins are outside these roles; the SCP output
+# below is for the client's Organization, if they have one.
+data "aws_iam_policy_document" "bedrock_zdr_guard" {
+  statement {
+    sid       = "LockBedrockZeroDataRetention"
+    effect    = "Deny"
+    actions   = ["bedrock:PutAccountDataRetention"]
+    resources = ["*"]
+    condition {
+      test     = "StringNotEquals"
+      variable = "bedrock:DataRetentionMode"
+      values   = ["none"]
+    }
+  }
+  statement {
+    sid       = "NoBedrockInvocationLogging"
+    effect    = "Deny"
+    actions   = ["bedrock:PutModelInvocationLoggingConfiguration"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "desktop_zdr_guard" {
+  count  = var.profile == "medical" ? 1 : 0
+  name   = "asp-desktop-bedrock-zdr-guard"
+  role   = aws_iam_role.desktop.id
+  policy = data.aws_iam_policy_document.bedrock_zdr_guard.json
+}
+
+resource "aws_iam_role_policy" "controlplane_zdr_guard" {
+  count  = var.profile == "medical" ? 1 : 0
+  name   = "asp-controlplane-bedrock-zdr-guard"
+  role   = aws_iam_role.controlplane.id
+  policy = data.aws_iam_policy_document.bedrock_zdr_guard.json
+}
