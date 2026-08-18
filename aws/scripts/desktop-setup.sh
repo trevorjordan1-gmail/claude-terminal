@@ -129,6 +129,32 @@ rm -f /etc/cups/printers.conf /etc/cups/printers.conf.O   # drop already-redirec
 # client-local time (terminal timestamps match the user)
 timedatectl set-timezone America/Chicago || true
 
+# polkit: GUI shutdown/reboot/updates prompted for a password (TJ 2026-08-18)
+# — but users have NO password by design, so those prompts are unanswerable
+# dead ends, and the owner already holds passwordless sudo (full root) anyway.
+# Grant the desktop-admin actions the GUI needs to sudo-group members.
+# Suspend/hibernate actions are deliberately NOT granted: an in-guest suspend
+# wedges an EC2 instance (Pause belongs to the portal, not the OS menu).
+mkdir -p /etc/polkit-1/rules.d
+cat > /etc/polkit-1/rules.d/49-asp-terminal.rules <<'RULES'
+polkit.addRule(function(action, subject) {
+    if (!subject.isInGroup("sudo")) {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (action.id == "org.freedesktop.login1.power-off" ||
+        action.id == "org.freedesktop.login1.power-off-multiple-sessions" ||
+        action.id == "org.freedesktop.login1.reboot" ||
+        action.id == "org.freedesktop.login1.reboot-multiple-sessions" ||
+        action.id.indexOf("org.freedesktop.packagekit.") == 0 ||
+        action.id.indexOf("com.ubuntu.softwareproperties.") == 0 ||
+        action.id == "io.snapcraft.snapd.manage") {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});
+RULES
+systemctl try-restart polkit 2>/dev/null || true
+
 # GNOME defaults for remote terminals:
 #  - text scaling 1.25 -> readable at 1920x1080 ("scaled so I can see everything")
 #  - NEVER lock/blank/suspend: users have no OS passwords, a lock screen would
