@@ -10,7 +10,11 @@
 <div class="card">
   <div class="meta">
     <div class="name">{{ m.name }}</div>
+    {% if m.build_for %}
+    <div class="sub">build box · {{ m.build_for }} · created by {{ m.creator or m.owner }}</div>
+    {% else %}
     <div class="sub">{{ m.type }} · {{ m.owner }}</div>
+    {% endif %}
   </div>
   <span class="state {{ m.css }}">{{ m.label }}</span>
   {% if m.css == "pending" and m.progress %}
@@ -48,6 +52,21 @@
 {% endfor %}
 {% endif %}
 
+{% if is_build_engineer and not suppress_actions %}
+<h2>New build box</h2>
+<div class="card">
+  <div class="meta">
+    <div class="name">Engagement workbench</div>
+    <div class="sub">One per engagement — every build engineer can see and use it</div>
+  </div>
+  <form class="share" method="post" action="/build-boxes/new">
+    <input type="text" name="build_for" placeholder="client code (e.g. acme)"
+           pattern="[a-z][a-z0-9]{1,15}" title="2–16 lowercase letters/digits" required>
+    <button class="ghost">Create build box</button>
+  </form>
+</div>
+{% endif %}
+
 {% if my_shares %}
 <h2>You're sharing</h2>
 {% for sh in my_shares %}
@@ -81,7 +100,11 @@
 <div class="card">
   <div class="meta">
     <div class="name">{{ m.name }}</div>
+    {% if m.build_for %}
+    <div class="sub">build box · {{ m.build_for }} · created by {{ m.creator or m.owner }}</div>
+    {% else %}
     <div class="sub">{{ m.type }} · {{ m.owner }}</div>
+    {% endif %}
   </div>
   <span class="state {{ m.css }}">{{ m.label }}</span>
   {% if not suppress_actions and m.css in ("paused", "stopped") %}

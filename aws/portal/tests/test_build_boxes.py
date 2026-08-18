@@ -88,3 +88,41 @@ def test_group_access_dormant_without_config():
     teammate = {"upn": "tech2@example.com", "groups": [BUILD_GROUP]}
     assert config.GROUP_BUILD_ENGINEERS == ""
     assert not app._may_use_machine(teammate, box)
+
+
+# ---------- UI + route dormancy ----------
+
+def _page_ctx(**over):
+    ctx = dict(user={"upn": "u@example.com", "name": "U"}, mine=[], others=[],
+               joinable=[], my_shares=[], is_admin=False, banner=None,
+               is_build_engineer=False, auto_refresh=False, suppress_actions=False)
+    ctx.update(over)
+    return ctx
+
+
+def test_machines_template_gates_form():
+    tpl = app._jinja.get_template("machines.html")
+    assert "/build-boxes/new" not in tpl.render(**_page_ctx())
+    assert "/build-boxes/new" in tpl.render(**_page_ctx(is_build_engineer=True))
+
+
+def test_build_badge_on_cards():
+    tpl = app._jinja.get_template("machines.html")
+    box = _mk("acme-build01", owner="tech1@example.com",
+              owner_group=BUILD_GROUP, build_for="acme")
+    box.update(css="running", label="Running", creator="tech1@example.com")
+    html = tpl.render(**_page_ctx(mine=[box]))
+    assert "build box · acme" in html
+
+
+def test_build_box_route_dormant():
+    """Route 403s even for group members when the feature is unconfigured —
+    a customer tenant cannot reach provisioning no matter the token claims."""
+    from fastapi.testclient import TestClient
+    client = TestClient(app.app)
+    cookie = app._signer.dumps({"upn": "eng@example.com", "name": "E",
+                                "groups": [BUILD_GROUP]})
+    client.cookies.set(app.SESSION_COOKIE, cookie)
+    r = client.post("/build-boxes/new", data={"build_for": "acme"},
+                    follow_redirects=False)
+    assert r.status_code == 403

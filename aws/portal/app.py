@@ -162,6 +162,8 @@ ACTION_BANNERS = {
     "stop": "Turning off — running programs will close. Use Pause next time to keep your work.",
     "reboot": "Reboot requested — status stays 'Running' during a reboot; the session "
               "drops for ~30 seconds.",
+    "buildbox": "Build box launching — first boot installs the desktop + workbench "
+                "(~15–20 min). Every build engineer can see and use it.",
 }
 
 HIBERNATED = "Client.UserInitiatedHibernate"
@@ -268,7 +270,8 @@ def home(request: Request):
     return _render(
         "machines.html",
         user=user, mine=mine, others=others, joinable=joinable,
-        is_admin=_is_admin(user), banner=banner, my_shares=my_shares,
+        is_admin=_is_admin(user), is_build_engineer=_is_build_engineer(user),
+        banner=banner, my_shares=my_shares,
         auto_refresh=bool(banner) or transitional,
         suppress_actions=bool(banner),
     )
@@ -590,6 +593,19 @@ def admin_remove(request: Request, instance_id: str):
         pass
     aws_ec2.terminate(instance_id)
     return RedirectResponse("/admin?did=remove", status_code=303)
+
+
+@app.post("/build-boxes/new")
+def build_box_new(request: Request, build_for: str = Form(...)):
+    user = _require_user(request)
+    if not _is_build_engineer(user):
+        raise HTTPException(403, "build engineers only")
+    build_for = build_for.strip().lower()
+    if not aws_ec2.valid_build_code(build_for):
+        raise HTTPException(400, "client code: 2-16 lowercase letters/digits")
+    aws_ec2.provision_build_box(build_for, user["upn"],
+                                config.GROUP_BUILD_ENGINEERS)
+    return RedirectResponse("/?did=buildbox", status_code=303)
 
 
 @app.get("/downloads", response_class=HTMLResponse)
