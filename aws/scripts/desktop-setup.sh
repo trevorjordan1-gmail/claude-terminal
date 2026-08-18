@@ -78,13 +78,14 @@ cat > /etc/opt/chrome/policies/managed/asp-terminal.json <<'JSON'
 }
 JSON
 
-# launch flags: smooth scrolling off IN CHROME ONLY; password-store=basic
-# because users have no OS password and gnome-keyring would otherwise demand
-# one on first launch (EBS is encrypted; profile-level storage is fine) (each smooth-scroll frame
+# launch flags: smooth scrolling off IN CHROME ONLY (each smooth-scroll frame
 # is an llvmpipe composite + DCV encode; discrete jumps stream snappier —
 # GNOME Terminal keeps its own smooth scrolling, this is per-app), reduced
-# motion, renderer count sized for the vCPUs. /usr/local overrides /usr/share
-# in XDG_DATA_DIRS so the dock and app grid pick this entry up.
+# motion, renderer count sized for the vCPUs, and password-store=basic
+# because users have no OS password and gnome-keyring would otherwise demand
+# one on first launch (EBS is encrypted; profile-level storage is fine).
+# /usr/local overrides /usr/share in XDG_DATA_DIRS so the dock and app grid
+# pick this entry up.
 mkdir -p /usr/local/share/applications
 sed 's|Exec=/usr/bin/google-chrome-stable|Exec=/usr/bin/google-chrome-stable --disable-smooth-scrolling --force-prefers-reduced-motion --renderer-process-limit=2 --password-store=basic|g' \
   /usr/share/applications/google-chrome.desktop > /usr/local/share/applications/google-chrome.desktop
