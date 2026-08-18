@@ -81,4 +81,4 @@ def local_user(upn: str) -> str:
     leading non-letters trimmed). Provisioning and session mapping both use
     this, so the two can never disagree."""
     name = re.sub(r"[^a-z0-9-]", "", upn.split("@")[0].lower())
-    return name.lstrip("-0123456789") or "user"
+    return name.lstrip("-0123456789")[:31] or "user"   # Linux caps names at 32

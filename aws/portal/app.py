@@ -98,6 +98,20 @@ def _may_use_machine(user: dict, m: dict) -> bool:
     )
 
 
+def _my_locals(user: dict) -> set:
+    """Every Linux user this person may act as: the current UPN mapping plus
+    the LocalUser tag of each machine they own/may use. Terminals provisioned
+    under an older mapping (e.g. before dots were dropped) keep working."""
+    locals_ = {config.local_user(user["upn"])}
+    try:
+        for m in aws_ec2.list_desktops():
+            if m.get("local_user") and _may_use_machine(user, m):
+                locals_.add(m["local_user"])
+    except Exception:
+        pass  # AWS hiccup: fall back to the derived name only
+    return locals_
+
+
 def _may_view(user: dict) -> bool:
     return (
         _is_admin(user)
@@ -316,13 +330,14 @@ def home(request: Request):
 
     # joinable sessions: any active session where I'm admin or have a grant
     my_local = config.local_user(user["upn"])
+    my_locals = _my_locals(user)
     joinable = []
     try:
         for s in broker.describe_sessions():
             if s.get("State") not in ("READY", "CREATING"):
                 continue
             owner = s.get("Owner", "")
-            if owner == my_local:
+            if owner in my_locals:
                 continue
             granted = _grants.get(s.get("Id", ""), {}).get(my_local)
             if _is_admin(user) or granted:
@@ -501,7 +516,7 @@ def revoke(request: Request, session_id: str, guest_local: str):
     session = next((s for s in broker.describe_sessions() if s.get("Id") == session_id), None)
     if not session:
         return RedirectResponse("/", status_code=303)
-    if session.get("Owner") != config.local_user(user["upn"]) and not _is_admin(user):
+    if session.get("Owner") not in _my_locals(user) and not _is_admin(user):
         raise HTTPException(403, "not your session")
     grants = _grants.get(session_id, {})
     grants.pop(guest_local, None)
@@ -540,11 +555,11 @@ def join(request: Request, session_id: str):
 @app.get("/dcvfile/{session_id}/{connect_user}")
 def dcv_file(request: Request, session_id: str, connect_user: str):
     user = _require_user(request)
-    my_local = config.local_user(user["upn"])
-    if connect_user != my_local and not _is_admin(user):
+    my_locals = _my_locals(user)
+    if connect_user not in my_locals and not _is_admin(user):
         # owners fetch their own file; guests fetch theirs
         for s in broker.describe_sessions():
-            if s.get("Id") == session_id and s.get("Owner") == my_local:
+            if s.get("Id") == session_id and s.get("Owner") in my_locals:
                 break
         else:
             raise HTTPException(403, "not yours")
