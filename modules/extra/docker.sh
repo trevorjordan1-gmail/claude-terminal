@@ -3,7 +3,7 @@
 
 ensure_docker_group() {
     if ! id -nG | grep -qw docker; then
-        sudo usermod -aG docker "$USER" || fail "usermod -aG docker failed"
+        sudo usermod -aG docker "$(id -un)" || fail "usermod -aG docker failed"
         next_step "Log out and back in so docker-group membership applies (or run: newgrp docker)."
     fi
 }

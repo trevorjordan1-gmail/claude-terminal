@@ -82,21 +82,23 @@ if [ "$(sudo cat "$PROFILED" 2>/dev/null)" != "$PROFILED_WANT" ]; then
         || fail "could not write $PROFILED"
 fi
 
-# 3. No provider API keys anywhere on the box. Direct keys would route
-#    around Bedrock (and the tenant's ZDR posture) — strip and say so.
-KEYRE='^[[:space:]]*(export[[:space:]]+)?ANTHROPIC_(API_KEY|AUTH_TOKEN)='
+# 3. No provider credentials anywhere on the box. Direct keys, a base-URL
+#    gateway, or a Gemini/OpenRouter key (claude-mem providers) would route
+#    around Bedrock (and the tenant's ZDR posture) — strip and say so. Same
+#    five keys verify.sh checks, same regex.
+KEYRE='^[[:space:]]*(export[[:space:]]+)?(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|GEMINI_API_KEY|OPENROUTER_API_KEY)='
 for f in /etc/environment /etc/profile.d/*.sh; do
     if [ ! -f "$f" ] || [ "$f" = "$PROFILED" ]; then continue; fi
     if sudo grep -qE "$KEYRE" "$f" 2>/dev/null; then
         sudo sed -i -E "/$KEYRE/d" "$f" \
-            && warn "removed an ANTHROPIC_* credential line from $f (medical boxes talk to Bedrock only)"
+            && warn "removed a provider credential line from $f (medical boxes talk to Bedrock only)"
     fi
 done
 for f in "$HOME/.bashrc" "$HOME/.profile" "$HOME/.bash_profile"; do
     [ -f "$f" ] || continue
     if grep -qE "$KEYRE" "$f"; then
         sed -i -E "/$KEYRE/d" "$f" \
-            && warn "removed an ANTHROPIC_* credential line from $f (medical boxes talk to Bedrock only)"
+            && warn "removed a provider credential line from $f (medical boxes talk to Bedrock only)"
     fi
 done
 US="$HOME/.claude/settings.json"

@@ -39,7 +39,7 @@ T="$D/telemetry.json"
 # The five credential keys claude-mem reads from .env; any of them bypasses
 # Bedrock (direct API key / gateway / Gemini / OpenRouter).
 E="$D/.env"
-KEYRE='^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|GEMINI_API_KEY|OPENROUTER_API_KEY)='
+KEYRE='^[[:space:]]*(export[[:space:]]+)?(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|GEMINI_API_KEY|OPENROUTER_API_KEY)='
 if [ -f "$E" ] && grep -qE "$KEYRE" "$E"; then
     sed -i -E "/$KEYRE/d" "$E" \
         && warn "stripped provider credentials from ~/.claude-mem/.env (medical boxes talk to Bedrock only)"

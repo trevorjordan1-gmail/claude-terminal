@@ -22,6 +22,8 @@ if have gsettings && gsettings list-schemas 2>/dev/null | grep -q '^org\.gnome\.
             gui_conf gsettings set org.gnome.desktop.background "$k" "$URI" || fail "could not set $k"
         fi
     done
+elif have gsettings && gsettings list-schemas 2>/dev/null | grep -q '^org\.gnome\.desktop\.background$'; then
+    warn "no D-Bus session and no dbus-run-session — wallpaper installed but not selected (re-run after a desktop login)"
 else
     warn "no GNOME here — wallpaper installed but not selected"
 fi

@@ -16,7 +16,11 @@ REPO="${CT_REPO:-$HOME/claude-terminal}"
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:$PATH"
 
 if ! claude_ready; then
-    log "claude is not logged in yet — run 'claude', sign in, then open a new shell."
+    if have claude; then
+        log "claude is not logged in yet — run 'claude', sign in, then open a new shell."
+    else
+        log "claude is not installed yet — run ./bootstrap.sh first."
+    fi
     exit 0
 fi
 
