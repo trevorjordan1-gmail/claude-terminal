@@ -32,6 +32,7 @@ _jinja = Environment(
     loader=FileSystemLoader(os.path.join(os.path.dirname(__file__), "templates")),
     autoescape=select_autoescape(["html"]),
 )
+_jinja.globals["brand"] = config.BRAND
 
 # In-memory share grants per DCV session: {session_id: {guest_local_user: level}}
 # PoC scope: single-process portal; move to a table when the portal scales out.

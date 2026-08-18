@@ -13,5 +13,10 @@ this portal afterward.</p>
   <a class="btn" href="{{ d.url }}">Download</a>
 </div>
 {% endfor %}
+<h2>Making things bigger</h2>
+<p class="note" style="margin:.2rem 0 1rem">Use <b>Settings → Accessibility → Large Text</b>
+(or any text scale via <code>gsettings set org.gnome.desktop.interface text-scaling-factor 1.5</code>)
+and per-app zoom (<kbd>Ctrl</kbd>+<kbd>+</kbd>). Settings → Displays 125% / 150% is not
+supported on these desktops — it silently applies 200%.</p>
 <p class="note"><a href="/">&larr; back to your terminals</a></p>
 {% endblock %}

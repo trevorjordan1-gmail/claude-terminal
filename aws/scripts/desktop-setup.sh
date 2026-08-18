@@ -293,5 +293,21 @@ UNIT
 systemctl daemon-reload
 systemctl enable --now asp-auto-update.timer
 
+
+# ---- tenant extension hook (issue #1): sanctioned per-tenant customization ----
+# If the tenant bucket carries scripts/tenant-custom.sh, run it LAST. Contract: the
+# operator owns the file, it is idempotent (re-runs on every release), failure
+# is logged + surfaced but non-fatal, and upstream never edits it. Same trust
+# boundary as this script — the same bucket writers control both.
+if aws s3 cp "s3://$ASP_BUCKET/scripts/tenant-custom.sh" "/opt/asp/tenant-custom.sh" >/dev/null 2>&1; then
+  chmod +x "/opt/asp/tenant-custom.sh"
+  if bash "/opt/asp/tenant-custom.sh" >> /var/log/asp-tenant-custom.log 2>&1; then
+    echo "tenant-custom.sh: ok"
+  else
+    rc=$?
+    echo "WARN: tenant-custom.sh failed (rc=$rc) — see /var/log/asp-tenant-custom.log" >&2
+  fi
+fi
+
 prog 100 "Ready" 0
 echo "desktop-setup complete"

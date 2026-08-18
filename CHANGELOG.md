@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-08-18 — operator loop (#1), menu-first cc on DCV (#3), display-scaling guidance (#4)
+
+- **Issues are the handoff channel now.** `docs/DEVELOPMENT.md` "Operator
+  loop": issue first (public — no identifiers), `<area>/<slug>` branch,
+  admin merges with `Fixes #N`, every shipping merge tagged `vYYYY.MM.DD`
+  (`rollout.sh` stamps tenants with `git describe`, so tags make tenant
+  version records meaningful — first tag `v2026.08.18`).
+- **Tenant extension hook (#1):** `desktop-setup.sh` / `cp-setup.sh` finish by
+  running `scripts/tenant-custom.sh` / `tenant-custom-cp.sh` from the tenant
+  bucket if present — idempotent, non-fatal, logged to
+  `/var/log/asp-tenant-custom.log`. Sanctioned per-tenant customization; the
+  shipped scripts are never patched downstream.
+- **`ASP_BRAND` (#1):** portal title/header from env (terraform `brand` →
+  control plane → `portal-deploy.sh` → `config.BRAND` → jinja global);
+  neutral default unchanged. 3 new tests (20 total).
+- **cc is menu-first on DCV (#3):** `10-claude-code` installs
+  `templates/cc-launcher.sh` → `~/.local/bin/cc-launcher` and points the
+  `cc`/`phonecc` aliases at it on DCV terminals (same file + alias shape as
+  SETUP.md step 3, so the two converge); Hyper-V keeps the plain alias;
+  `verify.sh` checks it on DCV.
+- **Display scaling (#4):** documented — Settings → Displays 125/150 % snaps
+  to 200 % on Xorg; text scaling + per-app zoom are the supported knobs
+  (runbook gotcha + a "Making things bigger" note on the portal downloads
+  page). Fractional scaling stays off (CPU/encode cost on GPU-less desktops).
+- Also merged today: `operator-fixes` (#2) — sign-in lands on the terminal,
+  aptdaemon/snapd polkit gap closed.
+
 ## 2026-08-18 — cleanup: every script shellcheck-clean, rollout waits properly, one ETA, tags
 
 - **aws/scripts are now held to the same shellcheck bar as the kit** (all 30

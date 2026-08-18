@@ -67,6 +67,14 @@ else
     f ".bashrc does not export ~/.local/bin — claude off PATH in DCV/cloud sessions"
 fi
 
+if is_dcv_terminal; then
+    if [ -x "$HOME/.local/bin/cc-launcher" ] && grep -q "^alias cc='cc-launcher'" "$HOME/.bashrc" 2>/dev/null; then
+        p "cc is menu-first (cc-launcher) on this DCV terminal"
+    else
+        f "cc-launcher missing or cc alias not pointing at it (10-claude-code, DCV branch)"
+    fi
+fi
+
 if [ -x "$HOME/.local/bin/cct-finish" ] && grep -q 'claude-terminal postlogin-finish' "$HOME/.bashrc" 2>/dev/null; then
     p "cct-finish + post-login hook installed"
 else

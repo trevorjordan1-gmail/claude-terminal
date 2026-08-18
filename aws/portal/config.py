@@ -46,6 +46,8 @@ GROUP_BUILD_ENGINEERS = _c.get("GROUP_BUILD_ENGINEERS", "")
 # tenant profile — "medical" (Ai Build Medical) reaches every terminal as
 # ASP_PROFILE and shapes DCV session permissions; default standard
 PROFILE = _c.get("ASP_PROFILE", "standard")
+# portal title/header (issue #1) — brand a tenant portal from env, not templates
+BRAND = _c.get("ASP_BRAND", "Claude Code Terminals").strip() or "Claude Code Terminals"
 
 SESSION_SECRET = _c["SESSION_SECRET"]
 

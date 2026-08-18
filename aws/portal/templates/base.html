@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="google" content="notranslate">
-<title>Claude Code Terminals</title>
+<title>{{ brand }}</title>
 <style>
   :root { --bg:#0f1420; --card:#1a2233; --text:#e8ecf4; --muted:#8b96ab;
           --accent:#4f8ef7; --ok:#3fb68b; --warn:#e0a63f; --line:#2a3550; }
@@ -51,7 +51,8 @@
 </head>
 <body>
 <header>
-  <h1>Claude Code <span>Terminals</span></h1>
+  {%- set brand_parts = brand.rsplit(" ", 1) %}
+  <h1>{% if brand_parts|length > 1 %}{{ brand_parts[0] }} <span>{{ brand_parts[1] }}</span>{% else %}{{ brand }}{% endif %}</h1>
   {% if user %}<div class="who">{{ user.name or user.upn }} · <a href="/logout">sign out</a></div>{% endif %}
 </header>
 {% block content %}{% endblock %}
