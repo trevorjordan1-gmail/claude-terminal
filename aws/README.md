@@ -21,6 +21,7 @@ user ── Entra login ──> portal ──> Session Manager Broker ──> to
 | `portal/` | FastAPI portal: Entra OIDC login, machine list with real states, power controls, Connect (broker token + `dcv://` handoff), session share/join/revoke, admin add/remove user, idle & cost settings, `/downloads`. |
 | `scripts/` | Idempotent provisioning + operations: desktop GNOME/DCV setup, control-plane broker/gateway/TLS, idle watchdog (auto-pause), WU-style self-update, fleet rollout. |
 | `runbooks/build-tenant.md` | **Start here** — builds a complete tenant from zero, with every hard-won gotcha. |
+| `runbooks/build-boxes.md` | Operator-only: per-engagement workbenches (group-owned desktops). Dormant on customer tenants — activates only where `GROUP_BUILD_ENGINEERS` is configured. |
 | `tenants.example.json` | Template for the git-ignored `tenants.json` fleet registry. |
 
 ## Quick start

@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-08-18 — operator build boxes (engagement workbenches)
+
+- **Group-owned machines + self-service build boxes in the portal — dormant
+  on every customer tenant.** New optional `GROUP_BUILD_ENGINEERS` config
+  (same pattern as `GROUP_VIEWERS`/`GROUP_ADMINS`): when set, machines may
+  carry an `OwnerGroup` tag that extends full use to that Entra group's
+  members, and the machines page gains a "New build box" form that launches
+  `<code>-buildNN` from the normal launch template (tags: `BuildFor`,
+  `Creator`, `OwnerGroup`; `Customer` stays the tenant's own value so the
+  watchdog and rollout treat it as a normal desktop). Unset — every customer
+  tenant — the code paths are unreachable: no UI, group tags grant nothing,
+  the route 403s. Design + rationale:
+  `docs/superpowers/specs/2026-08-18-operator-build-boxes-design.md`;
+  conventions + deployment: `aws/runbooks/build-boxes.md`.
+- Build boxes share ONE session as the fixed local user `build` — so
+  `connect`/`share` now use the machine's `LocalUser` tag instead of deriving
+  the session owner from the Owner UPN (also more correct for 1:1 boxes,
+  which set both at provision). The admin "add terminal" duplicate guard
+  skips build boxes — owning a workbench doesn't block an engineer's own
+  1:1 terminal.
+- First portal test suite: `aws/portal/tests/` (pytest via
+  `uv run --with pytest --with httpx --with-requirements requirements.txt`),
+  importable with a stub env file — dormancy is asserted at predicate,
+  template, and route level.
+
 ## 2026-08-15 (even later) — the AWS/DCV platform moves in: `aws/`
 
 - This repo is now the **source of truth for the whole stack**, not just the
