@@ -43,6 +43,9 @@ GROUP_ADMINS = _c.get("GROUP_ADMINS", "")
 # optional: enables operator build boxes (engagement workbenches); customer
 # tenants never set this, so the whole feature is dormant there
 GROUP_BUILD_ENGINEERS = _c.get("GROUP_BUILD_ENGINEERS", "")
+# tenant profile — "medical" (Ai Build Medical) reaches every terminal as
+# ASP_PROFILE and shapes DCV session permissions; default standard
+PROFILE = _c.get("ASP_PROFILE", "standard")
 
 SESSION_SECRET = _c["SESSION_SECRET"]
 
