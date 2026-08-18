@@ -46,12 +46,14 @@ REPO="s3:${ENDPOINT%/}/$BUCKET/$CLIENT/$MACHINE"
 command -v restic >/dev/null || { apt-get update -y && apt-get install -y restic; }
 
 umask 077
+# Values are single-quoted: this file is SOURCED, and BACKUP_KEEP is a
+# multi-word flag string — unquoted, bash would try to run "7" as a command.
 cat > /etc/asp-backup.env <<ENVEOF
-RESTIC_REPOSITORY=$REPO
-RESTIC_PASSWORD=$RPASS
-AWS_ACCESS_KEY_ID=$AKID
-AWS_SECRET_ACCESS_KEY=$ASECRET
-ASP_BACKUP_KEEP=$KEEP
+RESTIC_REPOSITORY='$REPO'
+RESTIC_PASSWORD='$RPASS'
+AWS_ACCESS_KEY_ID='$AKID'
+AWS_SECRET_ACCESS_KEY='$ASECRET'
+ASP_BACKUP_KEEP='$KEEP'
 ENVEOF
 chmod 600 /etc/asp-backup.env
 
@@ -77,11 +79,12 @@ cat > /opt/asp/backup-run.sh <<'RUNEOF'
 # Nightly backup of /home. One restic repo per machine.
 set -uo pipefail
 set -a; . /etc/asp-backup.env; set +a
+KEEP="${ASP_BACKUP_KEEP:---keep-daily 7 --keep-weekly 4 --keep-monthly 6}"
 # First run on a fresh repo: init. `cat config` is the cheap existence probe.
 restic cat config >/dev/null 2>&1 || restic init || exit 1
 restic backup /home --exclude-file=/etc/asp-backup.exclude --tag nightly || exit 1
 # shellcheck disable=SC2086  # KEEP is a deliberate multi-flag string
-restic forget $ASP_BACKUP_KEEP --prune || true
+restic forget $KEEP --prune || true
 restic snapshots --compact | tail -3
 RUNEOF
 chmod +x /opt/asp/backup-run.sh
@@ -95,6 +98,10 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/opt/asp/backup-run.sh
+# systemd services get no HOME; without a cache restic re-reads every file
+# every night instead of comparing against the parent snapshot.
+Environment=HOME=/root
+Environment=RESTIC_CACHE_DIR=/var/cache/restic
 Nice=10
 IOSchedulingClass=idle
 UNITEOF
@@ -114,6 +121,7 @@ Persistent=true
 WantedBy=timers.target
 TIMEREOF
 
+mkdir -p /var/cache/restic
 systemctl daemon-reload
 systemctl enable --now asp-backup.timer
 echo "backup-arm: armed $REPO (nightly 03:00 + catch-up on wake)"
