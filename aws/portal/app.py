@@ -5,7 +5,6 @@ broker tokens. Session sharing: owners/admins grant view or control to other
 tenant users; guests join the same session through the gateway.
 """
 
-import json
 import socket
 import time
 import urllib.parse

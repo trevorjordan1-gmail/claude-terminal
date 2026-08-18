@@ -26,6 +26,11 @@ output "desktop_launch_template_id" {
   value = aws_launch_template.desktop.id
 }
 
+output "client_code" {
+  description = "Goes into the /asp/portal/config SSM param as CLIENT_CODE (terminal names <client_code>-cctNN)"
+  value       = var.client_code
+}
+
 output "desktop_subnet_ids" {
   value = [aws_subnet.private_a.id, aws_subnet.private_b.id]
 }

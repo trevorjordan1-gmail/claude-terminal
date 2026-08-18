@@ -1,30 +1,37 @@
 #!/bin/bash
 # Desktop: DCV Server (virtual sessions) + Session Manager Agent (Ubuntu 24.04 x86_64).
-# Versions + config keys per docs.aws.amazon.com/dcv, verified 2026-08-15.
+# Config keys per docs.aws.amazon.com/dcv, verified 2026-08-15.
 # Idempotent; re-runnable via SSM.
 set -uxo pipefail
 source /etc/asp-terminal.env
 export DEBIAN_FRONTEND=noninteractive
 [ -f /opt/asp/progress.sh ] && . /opt/asp/progress.sh || prog() { :; }
 
-SERVER_TGZ="nice-dcv-2025.0-20103-ubuntu2404-x86_64.tgz"
-AGENT_DEB="nice-dcv-session-manager-agent_2025.0.902-1_amd64.ubuntu2404.deb"
-CDN="https://d1uj6qtbmh3dt5.cloudfront.net/2025.0"
+# Always-latest: the CDN root serves unversioned aliases (see dcv-cp-install.sh
+# for the why). Installs are dpkg-guarded, so re-runs never re-download.
+CDN="https://d1uj6qtbmh3dt5.cloudfront.net"
+SERVER_TGZ="nice-dcv-ubuntu2404-x86_64.tgz"
+AGENT_DEB="nice-dcv-session-manager-agent_amd64.ubuntu2404.deb"
+fetch() {  # fetch <name> — download an alias to /tmp, or stop the build loudly
+  wget -q "$CDN/$1" -O "/tmp/$1" || { echo "FATAL: download failed: $CDN/$1" >&2; exit 1; }
+}
 
 # ---- DCV server + Xdcv (virtual sessions, no GPU -> software rendering) ----
 if ! dpkg -s nice-dcv-server >/dev/null 2>&1; then
-  wget -q "$CDN/Servers/$SERVER_TGZ" -O "/tmp/$SERVER_TGZ"
+  fetch "$SERVER_TGZ"
+  # the tarball unpacks into a versioned directory — read the name from it
+  SERVER_DIR="$(tar -tzf "/tmp/$SERVER_TGZ" | head -1 | cut -d/ -f1)"
   tar -xzf "/tmp/$SERVER_TGZ" -C /tmp
-  cd /tmp/nice-dcv-2025.0-20103-ubuntu2404-x86_64
-  apt-get install -y ./nice-dcv-server_*.deb ./nice-xdcv_*.deb
+  cd "/tmp/$SERVER_DIR" || { echo "FATAL: DCV server tarball layout changed" >&2; exit 1; }
+  apt-get install -y ./nice-dcv-server_*.deb ./nice-xdcv_*.deb || { echo "FATAL: DCV server install failed" >&2; exit 1; }
   usermod -aG video dcv
 fi
 apt-get install -y mesa-utils
 
 # ---- session manager agent (server must exist first) ----
 if ! dpkg -s nice-dcv-session-manager-agent >/dev/null 2>&1; then
-  wget -q "$CDN/SessionManagerAgents/$AGENT_DEB" -O "/tmp/$AGENT_DEB"
-  apt-get install -y "/tmp/$AGENT_DEB"
+  fetch "$AGENT_DEB"
+  apt-get install -y "/tmp/$AGENT_DEB" || { echo "FATAL: SM agent install failed" >&2; exit 1; }
 fi
 
 # ---- broker CA (published by the control plane) ----
@@ -100,9 +107,10 @@ cat > /etc/dcv/dcvsessioninit <<'INIT'
 # update may restore the stock desktop-autodetect version — re-run the script.
 export XDG_CURRENT_DESKTOP=ubuntu:GNOME
 export GNOME_SHELL_SESSION_MODE=ubuntu
-# snap apps (Firefox) are invisible without this: login shells get it from
-# /etc/profile.d, the DCV Xsession path does not — the dock can't show a
-# favorite whose .desktop file isn't on XDG_DATA_DIRS
+# snap apps are invisible without this: login shells get it from
+# /etc/profile.d, the DCV Xsession path does not — a snap's .desktop file must
+# be on XDG_DATA_DIRS for the dock/app grid to show it (Chrome is a deb now,
+# but any snap the user installs later still needs this)
 [ -f /etc/profile.d/apps-bin-path.sh ] && . /etc/profile.d/apps-bin-path.sh
 exec /etc/X11/Xsession
 INIT

@@ -23,8 +23,11 @@ while IFS=$'\t' read -r NAME PROFILE REGION BUCKET CPID PORTAL; do
     echo "   scripts synced + release channel set to $VERSION (terminals self-apply within a day, or on wake)"
   fi
   if [ "$LAYER" = "portal" ] || [ "$LAYER" = "all" ]; then
-    echo "$VERSION" > portal/VERSION
-    (cd portal && zip -qr /tmp/portal-rollout.zip . -x "__pycache__/*")
+    # stamp VERSION into a staging copy — never into the tracked portal/VERSION
+    # (a dirty tree would make every later `git describe --dirty` lie)
+    STAGE=$(mktemp -d); cp -r portal "$STAGE/portal"; echo "$VERSION" > "$STAGE/portal/VERSION"
+    (cd "$STAGE/portal" && zip -qr /tmp/portal-rollout.zip . -x "*/__pycache__/*" -x "__pycache__/*")
+    rm -rf "$STAGE"
     aws s3 cp /tmp/portal-rollout.zip "s3://$BUCKET/portal/portal.zip" >/dev/null || ok=0
     CMD=$(aws ssm send-command --instance-ids "$CPID" --document-name AWS-RunShellScript \
       --timeout-seconds 300 --parameters 'commands=["bash /opt/asp/portal-deploy.sh >/dev/null 2>&1; sleep 3; curl -s http://127.0.0.1:8080/healthz"]' \
