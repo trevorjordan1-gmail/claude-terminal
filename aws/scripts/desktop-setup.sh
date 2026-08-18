@@ -101,9 +101,9 @@ cat > /etc/xdg/autostart/cct-chrome-warm.desktop <<'DESKTOP'
 Type=Application
 Name=Chrome (warm start)
 Comment=Opens the browser at sign-in so it is already warm
-Exec=/usr/bin/google-chrome-stable --disable-smooth-scrolling --force-prefers-reduced-motion --renderer-process-limit=2 --password-store=basic
+Exec=/usr/bin/google-chrome-stable --disable-smooth-scrolling --force-prefers-reduced-motion --renderer-process-limit=2 --password-store=basic --start-minimized
 OnlyShowIn=GNOME;
-X-GNOME-Autostart-Delay=3
+X-GNOME-Autostart-Delay=2
 DESKTOP
 
 # paging safety (TJ 2026-08-17): hibernation's swap (ec2 hibinit, RAM-sized)
@@ -151,8 +151,9 @@ polkit.addRule(function(action, subject) {
         action.id == "org.freedesktop.login1.reboot" ||
         action.id == "org.freedesktop.login1.reboot-multiple-sessions" ||
         action.id.indexOf("org.freedesktop.packagekit.") == 0 ||
+        action.id.indexOf("org.debian.apt.") == 0 ||
         action.id.indexOf("com.ubuntu.softwareproperties.") == 0 ||
-        action.id == "io.snapcraft.snapd.manage") {
+        action.id.indexOf("io.snapcraft.snapd.") == 0) {
         return polkit.Result.YES;
     }
     return polkit.Result.NOT_HANDLED;
@@ -215,6 +216,9 @@ Comment=Opens your terminal at sign-in
 Exec=gnome-terminal --maximize
 OnlyShowIn=GNOME;
 X-GNOME-Autostart-enabled=true
+# after the browser warm start: the terminal maps last, so sign-in lands on a
+# focused maximized terminal with the warm (minimized) browser one click away
+X-GNOME-Autostart-Delay=6
 DESKTOP
 
 prog 55 "Installing the Claude Code workbench" 9
