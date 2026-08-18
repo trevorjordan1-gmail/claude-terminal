@@ -60,8 +60,20 @@ def describe_servers() -> list[dict]:
 # client's local printers stop mounting as cups queues in the session. Rules
 # are last-match-wins, so this strips printer back out of `allow builtin`.
 NO_PRINTER = "%any% disallow printer"
+# Medical tenants: nothing leaves the session as a file, and `deny` (unlike
+# `disallow`) cannot be re-allowed by any later rule — owner and guests alike.
+MEDICAL_DENY = "%any% deny file-download printer"
 
-DEFAULT_PERMISSIONS = f"[permissions]\n%owner% allow builtin\n{NO_PRINTER}\n"
+
+def _profile_rules() -> list[str]:
+    rules = [NO_PRINTER]
+    if config.PROFILE == "medical":
+        rules.append(MEDICAL_DENY)
+    return rules
+
+
+def default_permissions() -> str:
+    return "[permissions]\n%owner% allow builtin\n" + "\n".join(_profile_rules()) + "\n"
 
 
 def create_session(name: str, owner: str, permissions: str | None = None) -> dict:
@@ -72,7 +84,7 @@ def create_session(name: str, owner: str, permissions: str | None = None) -> dic
         "MaxConcurrentClients": 4,  # owner + collab guests
         # without a StorageRoot the client hides file transfer entirely
         "StorageRoot": "%home%",
-        "PermissionsFile": base64.b64encode((permissions or DEFAULT_PERMISSIONS).encode()).decode(),
+        "PermissionsFile": base64.b64encode((permissions or default_permissions()).encode()).decode(),
     }
     with _client() as c:
         r = c.post("/createSessions", json=[req], headers=_headers())
@@ -125,5 +137,5 @@ def build_permissions(guests: dict[str, str]) -> str:
     for user, level in guests.items():
         feats = CONTROL_FEATURES if level == "control" else VIEW_FEATURES
         lines.append(f"{user} allow {feats}")
-    lines.append(NO_PRINTER)
+    lines.extend(_profile_rules())
     return "\n".join(lines) + "\n"

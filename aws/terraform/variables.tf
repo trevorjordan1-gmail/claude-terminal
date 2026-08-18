@@ -35,3 +35,12 @@ variable "desktop_instance_type" {
 variable "artifacts_bucket" {
   description = "Pre-existing S3 bucket holding setup scripts + portal builds (e.g. <org>-asp-artifacts-<account-id>)"
 }
+
+variable "profile" {
+  description = "Terminal profile for this tenant: standard, or medical (Ai Build Medical — Claude Code pinned to Bedrock, DCV file-download denied, ZDR guard). Reaches every terminal as ASP_PROFILE."
+  default     = "standard"
+  validation {
+    condition     = contains(["standard", "medical"], var.profile)
+    error_message = "profile must be \"standard\" or \"medical\"."
+  }
+}

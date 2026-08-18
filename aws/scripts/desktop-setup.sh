@@ -247,6 +247,17 @@ else
   echo "dcv-desktop-install.sh not in bucket yet — base image only"
 fi
 
+# ---- 5. medical profile: host-side belt-and-braces (the kit does the rest) ----
+# The broker's per-session permissions already deny these on medical tenants;
+# the server default catches any session created outside the portal. Stock
+# default.perm is "[permissions] / %owner% allow builtin" — rewrite it whole.
+if [ "${ASP_PROFILE:-standard}" = "medical" ] && [ -d /etc/dcv ]; then
+  MEDPERM='[permissions]
+%owner% allow builtin
+%any% deny file-download printer'
+  [ "$(cat /etc/dcv/default.perm 2>/dev/null)" = "$MEDPERM" ] || printf '%s\n' "$MEDPERM" > /etc/dcv/default.perm
+fi
+
 # WU-style self-update: daily check + catch-up on wake (Persistent), defers in use
 aws s3 cp "s3://$ASP_BUCKET/scripts/auto-update.sh" /opt/asp/auto-update.sh 2>/dev/null && chmod +x /opt/asp/auto-update.sh
 cat > /etc/systemd/system/asp-auto-update.service <<'UNIT'

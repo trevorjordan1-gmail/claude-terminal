@@ -43,6 +43,7 @@ resource "aws_instance" "controlplane" {
       ASP_REGION      = var.region
       ASP_BUCKET      = var.artifacts_bucket
       ASP_CERT_EMAIL  = var.cert_email
+      ASP_PROFILE     = var.profile
     }
   })
 

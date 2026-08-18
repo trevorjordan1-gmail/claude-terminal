@@ -22,6 +22,7 @@ user ── Entra login ──> portal ──> Session Manager Broker ──> to
 | `scripts/` | Idempotent provisioning + operations: desktop GNOME/DCV setup, control-plane broker/gateway/TLS, idle watchdog (auto-pause), WU-style self-update, fleet rollout. |
 | `runbooks/build-tenant.md` | **Start here** — builds a complete tenant from zero, with every hard-won gotcha. |
 | `runbooks/build-boxes.md` | Operator-only: per-engagement workbenches (group-owned desktops). Dormant on customer tenants — activates only where `GROUP_BUILD_ENGINEERS` is configured. |
+| `runbooks/build-tenant.md` §11.6 | **Medical profile** (`profile = "medical"`): Bedrock-only terminals, DCV file-download deny, zero-data-retention lock (`scripts/bedrock-zdr.sh`), offboarding wipe list. |
 | `tenants.example.json` | Template for the git-ignored `tenants.json` fleet registry. |
 
 ## Quick start
