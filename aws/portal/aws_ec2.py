@@ -67,6 +67,9 @@ def list_desktops() -> list[dict]:
                 "state": inst["State"]["Name"],
                 "idle_policy": tags.get("IdlePolicy", ""),
                 "idle_minutes": tags.get("IdleMinutes", ""),
+                "owner_group": tags.get("OwnerGroup", ""),
+                "build_for": tags.get("BuildFor", ""),
+                "creator": tags.get("Creator", ""),
                 # distinguishes hibernated ("Paused") from powered-off stops
                 "reason_code": (inst.get("StateReason") or {}).get("Code", ""),
                 "private_ip": inst.get("PrivateIpAddress", ""),
@@ -99,6 +102,62 @@ def terminate(instance_id: str) -> None:
 
 def valid_local_user(name: str) -> bool:
     return bool(re.fullmatch(r"[a-z][a-z0-9-]{1,30}", name))
+
+
+# ---------- operator build boxes (engagement workbenches) ----------
+
+def valid_build_code(code: str) -> bool:
+    return bool(re.fullmatch(r"[a-z][a-z0-9]{1,15}", code))
+
+
+def next_build_name(build_for: str) -> str:
+    highest = 0
+    for m in list_desktops():
+        match = re.fullmatch(rf"{re.escape(build_for)}-build(\d+)", m["name"])
+        if match:
+            highest = max(highest, int(match.group(1)))
+    return f"{build_for}-build{highest + 1:02d}"
+
+
+def provision_build_box(build_for: str, creator_upn: str, owner_group: str) -> str:
+    """Launch an engagement workbench. Owner = the creating engineer (their 1:1
+    view still works); OwnerGroup extends access to the whole team; the local
+    session user is the fixed 'build' — group boxes have no single UPN to
+    derive one from, and everyone shares the one session by design."""
+    name = next_build_name(build_for)
+    local = "build"
+    env = "\n".join([
+        f"ASP_BROKER_HOST={config.BROKER_SHORT_HOST}",
+        f"ASP_LOCAL_USER={local}",
+        f"ASP_OWNER_UPN={creator_upn}",
+        f"ASP_ALL_USERS={local}",
+        f"ASP_CUSTOMER={config.CUSTOMER}",
+        f"ASP_REGION={config.REGION}",
+        f"ASP_BUCKET={config.ARTIFACTS_BUCKET}",
+    ])
+    user_data = BOOTSTRAP.format(env=env, bucket=config.ARTIFACTS_BUCKET)
+    tags = [
+        {"Key": "Name", "Value": name},
+        {"Key": "Role", "Value": "desktop"},   # watchdog/rollout treat it normally
+        {"Key": "Customer", "Value": config.CUSTOMER},
+        {"Key": "Owner", "Value": creator_upn},
+        {"Key": "LocalUser", "Value": local},
+        {"Key": "OwnerGroup", "Value": owner_group},
+        {"Key": "BuildFor", "Value": build_for},
+        {"Key": "Creator", "Value": creator_upn},
+    ]
+    subnet = config.SUBNET_IDS[len(list_desktops()) % len(config.SUBNET_IDS)]
+    _ec2.run_instances(
+        LaunchTemplate={"LaunchTemplateId": config.LAUNCH_TEMPLATE_ID},
+        MinCount=1, MaxCount=1,
+        SubnetId=subnet,
+        UserData=user_data,
+        TagSpecifications=[
+            {"ResourceType": "instance", "Tags": tags},
+            {"ResourceType": "volume", "Tags": tags},
+        ],
+    )
+    return name
 
 
 def next_cct_name() -> str:

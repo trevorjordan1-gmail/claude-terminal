@@ -77,6 +77,26 @@ def _is_desktop_user(user: dict) -> bool:
     return config.GROUP_DESKTOP_USERS in user.get("groups", [])
 
 
+def _is_build_engineer(user: dict) -> bool:
+    """Build boxes are an operator capability, dormant unless configured."""
+    if not config.GROUP_BUILD_ENGINEERS:
+        return False
+    return (config.GROUP_BUILD_ENGINEERS in user.get("groups", [])
+            or _is_admin(user))
+
+
+def _may_use_machine(user: dict, m: dict) -> bool:
+    """Owner always; a machine's OwnerGroup extends full use to that group's
+    members — but only where the build-box feature is configured at all."""
+    if m["owner"].lower() == user["upn"].lower():
+        return True
+    return bool(
+        config.GROUP_BUILD_ENGINEERS
+        and m.get("owner_group")
+        and m["owner_group"] in user.get("groups", [])
+    )
+
+
 def _may_view(user: dict) -> bool:
     return (
         _is_admin(user)
@@ -207,10 +227,10 @@ def home(request: Request):
 
     machines = aws_ec2.list_desktops()
     _annotate_machines(machines)
-    mine = [m for m in machines if m["owner"].lower() == user["upn"].lower()]
+    mine = [m for m in machines if _may_use_machine(user, m)]
     if not _may_view(user) and not mine:
         return _render("denied.html", user=user)
-    others = [m for m in machines if m["owner"].lower() != user["upn"].lower()]
+    others = [m for m in machines if m not in mine]
 
     # joinable sessions: any active session where I'm admin or have a grant
     my_local = config.local_user(user["upn"])
@@ -261,7 +281,7 @@ def _authz_machine(user: dict, instance_id: str) -> dict:
     m = machines.get(instance_id)
     if not m:
         raise HTTPException(404, "unknown machine")
-    if m["owner"].lower() != user["upn"].lower() and not _is_admin(user):
+    if not _may_use_machine(user, m) and not _is_admin(user):
         raise HTTPException(403, "not your machine")
     return m
 
@@ -340,7 +360,9 @@ def connect(request: Request, instance_id: str):
         # handed out now would resolve to a desktop the gateway can't reach
         return _render("starting.html", user=user, machine=m)
 
-    owner_local = config.local_user(m["owner"])
+    # the machine's LocalUser tag, NOT derived from the Owner UPN: build boxes
+    # have a fixed shared session user that no UPN maps to
+    owner_local = m["local_user"]
     try:
         session = _ensure_session(owner_local)
         aws_ec2.force_display_layout(m["id"], session["Id"])
@@ -362,8 +384,8 @@ def connect(request: Request, instance_id: str):
 def share(request: Request, instance_id: str,
           guest_upn: str = Form(...), level: str = Form("view")):
     user = _require_user(request)
-    m = _authz_machine(user, instance_id)  # owner or admin
-    owner_local = config.local_user(m["owner"])
+    m = _authz_machine(user, instance_id)  # owner, group member, or admin
+    owner_local = m["local_user"]
     sessions = [s for s in broker.describe_sessions(owner=owner_local)
                 if s.get("State") == "READY"]
     if not sessions:
@@ -544,7 +566,9 @@ def admin_add(request: Request, owner_upn: str = Form(...), local_user: str = Fo
     local_user = (local_user.strip().lower() or config.local_user(owner_upn))
     if not aws_ec2.valid_local_user(local_user):
         raise HTTPException(400, "invalid username (lowercase letters/digits/dashes)")
-    if any(m["owner"].lower() == owner_upn for m in aws_ec2.list_desktops()):
+    # build boxes carry Owner = their creator but don't count as "a terminal"
+    if any(m["owner"].lower() == owner_upn and not m.get("build_for")
+           for m in aws_ec2.list_desktops()):
         raise HTTPException(409, "that user already has a terminal")
     aws_ec2.provision(owner_upn, local_user)
     return RedirectResponse("/admin?did=add", status_code=303)

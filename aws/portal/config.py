@@ -40,6 +40,9 @@ BROKER_VERIFY_TLS = _c.get("BROKER_VERIFY_TLS", "false").lower() == "true"
 GROUP_DESKTOP_USERS = _c["GROUP_DESKTOP_USERS"]
 GROUP_VIEWERS = _c.get("GROUP_VIEWERS", "")
 GROUP_ADMINS = _c.get("GROUP_ADMINS", "")
+# optional: enables operator build boxes (engagement workbenches); customer
+# tenants never set this, so the whole feature is dormant there
+GROUP_BUILD_ENGINEERS = _c.get("GROUP_BUILD_ENGINEERS", "")
 
 SESSION_SECRET = _c["SESSION_SECRET"]
 
