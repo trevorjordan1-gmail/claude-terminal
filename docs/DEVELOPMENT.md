@@ -5,7 +5,10 @@ bootstrap; this covers *maintaining* it.
 
 ## Status
 
-**v1 complete and field-validated.** As of 2026-07-22, every code path —
+**v1 complete and field-validated** (2026-07-22); since then the DCV/AWS
+platform moved into `aws/`, the medical profile landed (2026-08-18), and the
+`templates/` Ai Build methodology ships alongside — see `CHANGELOG.md` for
+the current state. As of 2026-07-22, every code path —
 core modules, post-login plugin modules (claude-mem, superpowers), extras
 plumbing, `get.sh` one-liner, `verify.sh` — has run successfully on freshly
 built Ubuntu 24.04 Hyper-V VMs. The module set was distilled from a
@@ -21,16 +24,21 @@ file-by-file audit of two long-lived production machines (see
 | `lib/common.sh` | helpers every module can use (see contract below) |
 | `modules/core/NN-*.sh` | always run, lexical order |
 | `modules/extra/<flag>.sh` | run when `--with-<flag>` given |
-| `assets/` | data files modules load (e.g. `gnome-terminal.dconf`) |
-| `tools/` | standalone user-facing helpers (`add-printer.sh`) |
+| `assets/` | data files modules load (`gnome-terminal.dconf`, `medical-wallpaper.svg`) |
+| `tools/` | standalone user-facing helpers (`add-printer.sh`, `cct-finish.sh` — installed to `~/.local/bin` by module 27) |
 | `windows/get.ps1` | Windows counterpart of `get.sh`: `irm … \| iex` on a Hyper-V host |
+| `windows/cctemp.ps1` | temporary Claude Code install on a Windows box for a troubleshooting engagement, with dead-man cleanup (README) |
+| `aws/` | the DCV-on-AWS platform: terraform tenant substrate, Entra portal, provisioning/ops scripts, runbooks (`aws/README.md`) |
+| `templates/` | Ai Build methodology templates the kit ships to every terminal (`CHANGELOG.md` 2026-08-13/14) |
 | `windows/New-UbuntuHyperVVM.ps1` | interactive Gen-2 Ubuntu VM builder (host-side) |
 | `verify.sh` | read-only PASS/FAIL/SKIP state check |
 | `modules/core/08-medical-bedrock.sh`, `21-medical-claude-mem.sh`, `43-medical-cues.sh` | medical-profile modules; skip unless `is_medical_terminal` (README "Medical mode") |
 | `audit/system-audit.sh` | full machine snapshot for diffing two boxes |
 | `docs/superpowers/` | original design spec + implementation plan (historical) |
 
-`windows/` is the one part of the repo that doesn't run on the target box — it
+`windows/` and `aws/` don't run on the target box — `windows/` runs on the
+Hyper-V host that *builds* a box, `aws/` on the operator workstation and the
+tenant's control plane. `windows/` in particular
 runs on the Windows Hyper-V host that *builds* the box. It's standalone
 tooling in the spirit of `tools/`, outside `bootstrap.sh` dispatch, so the
 module contract below does not apply to it.

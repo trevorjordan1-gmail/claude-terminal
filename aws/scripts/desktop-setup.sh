@@ -1,7 +1,9 @@
 #!/bin/bash
 # ASP terminal desktop setup — idempotent, re-runnable via SSM.
-# Expects /etc/asp-terminal.env with: ASP_BROKER_HOST ASP_LOCAL_USER ASP_OWNER_UPN
-#                                     ASP_CUSTOMER ASP_REGION ASP_BUCKET
+# Expects /etc/asp-terminal.env with: ASP_LOCAL_USER ASP_ALL_USERS ASP_BUCKET
+#   ASP_PROFILE (standard|medical); ASP_BROKER_HOST/ASP_REGION are read by the
+#   chained dcv-desktop-install.sh and the kit; ASP_OWNER_UPN/ASP_CUSTOMER ride
+#   along for humans debugging the box.
 set -uxo pipefail
 source /etc/asp-terminal.env
 export DEBIAN_FRONTEND=noninteractive

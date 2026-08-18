@@ -141,8 +141,8 @@ helper in `aws_ec2.py` (used by both `provision_desktop` and
 `ASP_PROFILE=<profile>` into every terminal's `/etc/asp-terminal.env`.
 Tenants without the var stay `standard`.
 
-**Portal `broker.py`:** `PROFILE == "medical"` → `DEFAULT_PERMISSIONS` and
-`build_permissions()` append `%any% deny file-download printer`.
+**Portal `broker.py`:** `PROFILE == "medical"` → `default_permissions()` and
+`build_permissions()` (via `_profile_rules()`) append `%any% deny file-download printer`.
 `StorageRoot` stays `%home%`.
 
 **`desktop-setup.sh`:** medical → also write `/etc/dcv/default.perm` with the
@@ -164,7 +164,7 @@ empty, Fable invoke refused).
 
 **Runbook:** "Medical profile" section (set the var, enable Anthropic model
 access once in the console, `bedrock-zdr.sh --apply` then `--check`, hand
-the SCP to the client) + offboarding wipe list in §11/§12 (`~/.claude-mem/`,
+the SCP to the client) + offboarding wipe list in the same section (`~/.claude-mem/`,
 `~/.claude/` — transcripts are PHI too —, `~/.cache/claude-cli-nodejs`, the
 home dir; no snapshots on medical removals; terminated instances are
 crypto-shredded by EBS encryption).

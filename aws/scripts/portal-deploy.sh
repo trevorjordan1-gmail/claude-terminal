@@ -101,7 +101,7 @@ NGINX
   rm -f /etc/nginx/sites-enabled/default
   nginx -t && systemctl reload nginx
 else
-  echo "WARN: no TLS cert yet — portal on 127.0.0.1:8080 only (delegation pending?)"
+  echo "WARN: no TLS cert yet — portal on 127.0.0.1:8080 only (DNS records / cp-tls.sh pending?)"
 fi
 
 echo "portal deployed"

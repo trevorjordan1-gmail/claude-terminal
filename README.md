@@ -51,8 +51,9 @@ cd ~/claude-terminal
 Then:
 
 1. Run `claude` once and log in.
-2. Re-run `./bootstrap.sh` — the two plugin modules (claude-mem, superpowers)
-   finish now that you're logged in.
+2. Open a new shell — the first shell after login runs `cct-finish`, which
+   installs the two plugin modules (claude-mem, superpowers). Re-running
+   `./bootstrap.sh` does the same.
 3. `./verify.sh` to confirm everything, and read the printed **NEXT STEPS**.
 
 Extras are flags: `./bootstrap.sh --with-docker --with-xrdp --with-tailscale`
@@ -109,18 +110,23 @@ PHI-approved (wallpaper, shell banner, motd). No Claude login exists on such
 a box — credentials come from the instance role.
 
 Activation is state on the box, not a flag on a run (the fleet updater
-re-runs `get.sh` daily with no arguments): the platform writes
-`ASP_PROFILE=medical` into `/etc/asp-terminal.env`, or an operator flips a
-box by hand with `./bootstrap.sh --medical` (writes
-`/etc/claude-terminal/medical`). Region and model IDs come from
-`/etc/asp-terminal.env` (`ASP_REGION`, optional `ASP_BEDROCK_SONNET|OPUS|HAIKU`).
-`./verify.sh` grows a **medical mode** section whose bar is zero FAILs.
+checks daily and re-runs `get.sh` with no arguments whenever a release is
+published): the platform writes `ASP_PROFILE=medical` into
+`/etc/asp-terminal.env`, or an operator flips a DCV box by hand with
+`./bootstrap.sh --medical` (writes `/etc/claude-terminal/medical`; refused on
+non-DCV boxes). Region comes from `/etc/asp-terminal.env` (`ASP_REGION`);
+the Bedrock model IDs are kit defaults, overridable per box by adding
+`ASP_BEDROCK_SONNET|OPUS|HAIKU` lines to that file (the platform doesn't
+write them today). `./verify.sh` grows a **medical mode** section whose bar
+is zero FAILs.
 
 What it pins: `/etc/claude-code/managed-settings.json` (Bedrock, region,
 model IDs; user settings cannot override), the same env in `/etc/bash.bashrc`
 + `/etc/profile.d/`, claude-mem's model/telemetry/cloud-sync settings, and a
-sweep that removes `ANTHROPIC_*`/`GEMINI_*`/`OPENROUTER_*` credential lines
-it finds. The tenant-side half (IAM, Bedrock zero-data-retention lock, DCV
+sweep that removes `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`/
+`ANTHROPIC_BASE_URL`/`GEMINI_API_KEY`/`OPENROUTER_API_KEY` lines from the
+shell profiles and claude-mem's `.env`. The tenant-side half (IAM, Bedrock
+zero-data-retention lock, DCV
 file-download deny) lives in `aws/` — see `aws/runbooks/build-tenant.md`.
 
 ## Windows: temporary troubleshooting install (`cctemp`) — not a terminal build
@@ -153,20 +159,23 @@ keeps its install, and a forgotten one removes itself. Tune with
 
 | Module | Purpose |
 |---|---|
-| 00-base-cli | git, gh, tmux, curl, jq, unzip, lynx, xvfb, openssh-server |
+| 00-base-cli | git, gh, tmux, curl, wget, jq, unzip, lynx, xvfb, openssh-server, ca-certificates, gnupg |
 | 01-sudo-nopasswd | passwordless sudo for the installing user — password asked once at first setup, never again |
 | 02-home-dirs | creates the `~/Projects` workspace folder |
 | 05-node | Node.js 20 (NodeSource) + user-owned npm prefix `~/.npm-global` |
+| 08-medical-bedrock | *medical only, skips elsewhere:* pins Claude Code to Amazon Bedrock (managed settings + system env) and sweeps provider API keys off the box |
 | 10-claude-code | Claude Code native install + `cc` / `phonecc` aliases |
-| 15-bun | Bun runtime (claude-mem v10's worker needs it) |
-| 20-claude-mem | [claude-mem](https://github.com/thedotmack/claude-mem) persistent memory, v10 plugin |
+| 15-bun | Bun runtime (claude-mem's worker needs it) |
+| 20-claude-mem | [claude-mem](https://github.com/thedotmack/claude-mem) persistent memory (plugin, latest release) |
+| 21-medical-claude-mem | *medical only:* claude-mem on Bedrock via the CLI's aliases; telemetry + cloud sync off; credential strip |
 | 25-superpowers | [superpowers](https://github.com/obra/superpowers) skills plugin |
 | 27-postlogin-finish | installs `cct-finish` + a `.bashrc` hook: the first shell after `claude` login finishes the plugin installs automatically (headless/cloud provisions never see the "re-run after login" reminder) |
 | 30-uv | uv/uvx (Chroma MCP server runs through it) |
 | 38-x11-session | forces X11 (Wayland off at GDM) — RustDesk/Splashtop can't inject input on Wayland (skipped on DCV terminals, where the host owns session config) |
-| 40-gnome-qol | screen lock off, idle blanking off; dock = Firefox, Files, Terminal (App Center and Help unpinned) |
+| 40-gnome-qol | screen lock off, idle blanking off; dock = Firefox, Files, Terminal (App Center and Help unpinned) — on DCV terminals the dock is host-managed (Chrome, dconf-locked) and left alone |
 | 41-splashtop-cursorfix | works around a Splashtop ≤3.8.0.0 crash: static cursors (host + snap themes), no Firefox launch spinner, LD_PRELOAD shim on the streamer (only runs where Splashtop is installed) |
 | 42-terminal-prefs | seeds GNOME Terminal prefs (Ctrl+C/V copy-paste, 200×50 window) on fresh boxes — never overwrites later tweaks |
+| 43-medical-cues | *medical only:* PHI-approved wallpaper, shell banner, motd |
 | 45-hyperv-qol | fixes over-fast wheel scrolling on Hyper-V/remote mice; adds user to `video` group (only runs on Hyper-V) |
 | 50-okular-md | double-clicking a `.md` file opens it rendered (Okular) |
 
