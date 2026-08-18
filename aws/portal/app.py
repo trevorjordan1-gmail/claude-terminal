@@ -11,6 +11,7 @@ import urllib.parse
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
+import httpx
 import msal
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
@@ -150,6 +151,50 @@ def logout():
     resp = RedirectResponse("/login")
     resp.delete_cookie(SESSION_COOKIE)
     return resp
+
+
+_graph_tok: dict = {"value": None, "exp": 0}
+
+
+def _graph_token() -> str:
+    """App-only Graph token (client credentials). The app registration holds
+    User.Read.All as an application permission, consented at tenant setup."""
+    if _graph_tok["value"] and time.time() < _graph_tok["exp"] - 60:
+        return _graph_tok["value"]
+    result = _msal_app().acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
+    if "access_token" not in result:
+        raise RuntimeError(result.get("error_description", "graph token failed"))
+    _graph_tok["value"] = result["access_token"]
+    _graph_tok["exp"] = time.time() + int(result.get("expires_in", 3600))
+    return _graph_tok["value"]
+
+
+@app.get("/admin/user-search")
+def admin_user_search(request: Request, q: str = ""):
+    """Live directory search for the add-user form: first/last/display name
+    or UPN/mail prefix, admin-only, capped small."""
+    _require_admin(request)
+    q = q.strip()[:64].replace("'", "")
+    if len(q) < 2:
+        return {"users": []}
+    flt = " or ".join(
+        f"startswith({f},'{q}')"
+        for f in ("displayName", "givenName", "surname", "userPrincipalName", "mail"))
+    try:
+        r = httpx.get(
+            "https://graph.microsoft.com/v1.0/users",
+            params={"$filter": flt,
+                    "$select": "displayName,userPrincipalName,accountEnabled",
+                    "$top": "8"},
+            headers={"Authorization": f"Bearer {_graph_token()}"}, timeout=10)
+        r.raise_for_status()
+        users = [{"name": u.get("displayName") or "", "upn": u.get("userPrincipalName") or ""}
+                 for u in r.json().get("value", [])
+                 if u.get("accountEnabled", True) and u.get("userPrincipalName")]
+        return {"users": users}
+    except Exception:
+        # directory hiccup must never block adds — the form accepts a typed email
+        return {"users": [], "error": "directory search unavailable — type the full email"}
 
 
 # ---------- pages ----------
