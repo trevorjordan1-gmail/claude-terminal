@@ -162,7 +162,7 @@ ACTION_BANNERS = {
     "reboot": "Reboot requested — status stays 'Running' during a reboot; the session "
               "drops for ~30 seconds.",
     "buildbox": "Build box launching — first boot installs the desktop + workbench "
-                "(~15–20 min). Every build engineer can see and use it.",
+                "(~15–25 min). Every build engineer can see and use it.",
 }
 
 HIBERNATED = "Client.UserInitiatedHibernate"
@@ -492,7 +492,7 @@ ADMIN_BANNERS = {
               "with them, but never get a terminal of their own.",
     "idle": "Idle settings saved — the watchdog applies them on its next 5-minute pass.",
     "add": "Terminal provisioning — the instance is launching now; first boot "
-           "installs the desktop + workbench (~15–20 min). It appears below "
+           "installs the desktop + workbench (~15–25 min). It appears below "
            "immediately and its owner can sign in once it's Running.",
     "remove": "Terminal terminated — the user's access is gone and the machine "
               "and its disk are being deleted.",

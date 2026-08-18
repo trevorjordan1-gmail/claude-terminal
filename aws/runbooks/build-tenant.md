@@ -307,7 +307,7 @@ broker AVAILABLE both lie during the ~1.5–3.5 min RAM restore).
   are managed on the **admin page** ("Viewer-only users" card, stored in SSM
   `/asp/portal/viewers`); the `ASP-Viewers` Entra group also still works.
 - **Add user (admin page):** provisions `<client_code>-cctNN` from the launch
-  template (first boot ~15–20 min). **Remove user:** deletes their broker
+  template (first boot ~15–25 min). **Remove user:** deletes their broker
   sessions and terminates the instance + disk (confirm dialog; no snapshot —
   add one first if the client wants offboard retention).
 - **Sharing:** owners (and admins) grant view/control per session; the OS user

@@ -3,6 +3,7 @@
 # Config: /etc/asp-terminal.env (infra) + SSM params /asp/portal/{config,secrets}
 #         + /etc/asp-broker-client.env (written by dcv-cp-install.sh).
 set -uxo pipefail
+# shellcheck source=/dev/null  # written by the platform at boot; not in the repo
 source /etc/asp-terminal.env
 
 # ---- code ----

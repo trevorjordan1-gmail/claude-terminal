@@ -21,7 +21,7 @@ provider "aws" {
   default_tags {
     tags = {
       Customer  = var.customer
-      Project   = "asp-terminals"
+      Project   = "claude-terminal"
       ManagedBy = "terraform"
     }
   }

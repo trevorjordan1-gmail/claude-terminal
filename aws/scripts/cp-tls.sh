@@ -3,6 +3,7 @@
 # Requires SSM SecureString /asp/cloudflare/token (zone-scoped DNS-edit token).
 # Re-runnable via SSM. (Client tenants on other DNS: swap the certbot plugin.)
 set -uxo pipefail
+# shellcheck source=/dev/null  # written by the platform at boot; not in the repo
 source /etc/asp-terminal.env
 
 CERT_DIR="/etc/letsencrypt/live/$ASP_PORTAL_HOST"

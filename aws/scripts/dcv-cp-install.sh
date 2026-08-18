@@ -3,6 +3,7 @@
 # Config keys per docs.aws.amazon.com/dcv (sm-admin, gw-admin), verified 2026-08-15.
 # Idempotent; re-runnable via SSM.
 set -uxo pipefail
+# shellcheck source=/dev/null  # written by the platform at boot; not in the repo
 source /etc/asp-terminal.env
 export DEBIAN_FRONTEND=noninteractive
 
@@ -50,14 +51,14 @@ systemctl enable dcv-session-manager-broker
 systemctl restart dcv-session-manager-broker
 
 # wait for the broker's self-signed CA, publish it for desktops + gateway
-for i in $(seq 1 60); do [ -f "$CA_SRC" ] && break; sleep 5; done
+for _ in $(seq 1 60); do [ -f "$CA_SRC" ] && break; sleep 5; done
 test -f "$CA_SRC"
 aws s3 cp "$CA_SRC" "s3://$ASP_BUCKET/certs/dcvsmbroker_ca.pem"
 mkdir -p /etc/dcv-connection-gateway
 cp "$CA_SRC" /etc/dcv-connection-gateway/dcvsmbroker_ca.pem
 
 # wait for the broker API to answer before registering the portal client
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
   curl -sk "https://localhost:8446/sessionConnectionData/aSession/aOwner" | grep -q authorization && break
   sleep 5
 done

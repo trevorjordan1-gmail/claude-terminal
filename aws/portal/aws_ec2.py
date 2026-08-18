@@ -37,7 +37,7 @@ prog() {{
 }}
 PROGEOF
 . /opt/asp/progress.sh
-prog 5 "Starting up" 24
+prog 5 "Starting up" 20
 aws s3 cp "s3://{bucket}/scripts/desktop-setup.sh" /opt/asp/setup.sh
 chmod +x /opt/asp/setup.sh
 /opt/asp/setup.sh 2>&1 | tee -a /var/log/asp-setup.log
