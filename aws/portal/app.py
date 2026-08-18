@@ -184,17 +184,39 @@ def admin_user_search(request: Request, q: str = ""):
         r = httpx.get(
             "https://graph.microsoft.com/v1.0/users",
             params={"$filter": flt,
-                    "$select": "displayName,userPrincipalName,accountEnabled",
-                    "$top": "8"},
+                    "$select": "displayName,userPrincipalName,accountEnabled,"
+                               "assignedLicenses,userType",
+                    "$top": "15"},
             headers={"Authorization": f"Bearer {_graph_token()}"}, timeout=10)
         r.raise_for_status()
-        users = [{"name": u.get("displayName") or "", "upn": u.get("userPrincipalName") or ""}
-                 for u in r.json().get("value", [])
-                 if u.get("accountEnabled", True) and u.get("userPrincipalName")]
-        return {"users": users}
+        # Real sign-in users vs the directory's plumbing. Rules from a live
+        # tenant survey: unlicensed accounts (service/automation/shared
+        # mailboxes/guests) and .onmicrosoft.com UPNs (admin/service accounts —
+        # some ARE licensed, so both signals are needed) and disabled accounts
+        # are hidden but revealable, never silently dropped.
+        users, hidden = [], []
+        for u in r.json().get("value", []):
+            upn = u.get("userPrincipalName") or ""
+            if not upn:
+                continue
+            why = []
+            if not (u.get("assignedLicenses") or []):
+                why.append("unlicensed")
+            if ".onmicrosoft.com" in upn.lower():
+                why.append("service")
+            if (u.get("userType") or "") == "Guest":
+                why.append("guest")
+            if not u.get("accountEnabled", True):
+                why.append("disabled")
+            row = {"name": u.get("displayName") or "", "upn": upn}
+            if why:
+                hidden.append({**row, "why": "/".join(why)})
+            else:
+                users.append(row)
+        return {"users": users[:8], "hidden": hidden[:8]}
     except Exception:
         # directory hiccup must never block adds — the form accepts a typed email
-        return {"users": [], "error": "directory search unavailable — type the full email"}
+        return {"users": [], "hidden": [], "error": "directory search unavailable — type the full email"}
 
 
 # ---------- pages ----------

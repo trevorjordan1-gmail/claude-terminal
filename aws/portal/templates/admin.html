@@ -60,13 +60,23 @@ preserves it anyway). Per-terminal exceptions are on each terminal below.</p>
       const v = q.value.trim();
       if (v.length < 2) { box.style.display = "none"; return; }
       t = setTimeout(async () => {
-        let data = { users: [] };
+        let data = { users: [], hidden: [] };
         try { data = await (await fetch("/admin/user-search?q=" + encodeURIComponent(v))).json(); } catch (e) {}
         box.innerHTML = "";
         data.users.forEach(u => box.appendChild(row(`<b>${u.name}</b> <span style="opacity:.65">${u.upn}</span>`, () => pick(u))));
-        if (!data.users.length && v.includes("@"))
+        const hid = data.hidden || [];
+        if (hid.length) {
+          const reveal = row(`<span style="opacity:.6">${hid.length} hidden (service/unlicensed/guest/disabled) — <u>show</u></span>`, () => {});
+          reveal.onmousedown = (e) => { e.preventDefault();
+            reveal.remove();
+            hid.forEach(u => box.appendChild(row(
+              `<span style="opacity:.75"><b>${u.name}</b> ${u.upn} <span style="opacity:.6;font-size:.75em">[${u.why}]</span></span>`, () => pick(u))));
+          };
+          box.appendChild(reveal);
+        }
+        if (!data.users.length && !hid.length && v.includes("@"))
           box.appendChild(row(`use “<b>${v}</b>” as the email`, () => pick({ name: v.split("@")[0], upn: v })));
-        if (!data.users.length && !v.includes("@"))
+        if (!data.users.length && !hid.length && !v.includes("@"))
           box.appendChild(row(`<span style="opacity:.65">${data.error || "no matches — keep typing, or enter a full email"}</span>`, () => {}));
         box.style.display = "block";
       }, 250);
