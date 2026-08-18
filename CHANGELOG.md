@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-18 — platform: Chrome + streaming tuning land on main; kit follows the dock
+
+- **aws/ (merged from `aws-dcv-platform`):** Google Chrome (native deb) with a
+  managed streaming policy pack replaces the Firefox snap on DCV terminals;
+  30 fps virtual sessions + GNOME animations off (idle render burn); wake
+  truthfulness v2 (Connect gates on DCV port *and* broker availability, with
+  an "Almost ready…" state); launch template `update_default_version` +
+  250 MB/s root throughput; `m5a.large` default; swap fallback; Chrome
+  keyring fix and polkit grants for passwordless users.
+- **kit:** DCV hosts dconf-lock the dock to Chrome/Files/Terminal, so
+  `40-gnome-qol` no longer pins Firefox there (the locked write was FAILING
+  the module) and `verify.sh` expects Chrome on DCV (Firefox everywhere else).
+  Without this, every fleet box would FAIL two checks on its next daily run.
+- **repo hygiene:** `__pycache__/` and `*.pyc` are ignored; the nine bytecode
+  files that slipped in with the build-boxes commits are untracked.
+
 ## 2026-08-18 — operator build boxes (engagement workbenches)
 
 - **Group-owned machines + self-service build boxes in the portal — dormant
