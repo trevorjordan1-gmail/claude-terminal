@@ -182,30 +182,43 @@ def _dcv_reachable(ip: str, timeout: float = 0.7) -> bool:
         return False
 
 
+def _broker_available_hosts() -> set | None:
+    """Short hostnames the broker can place sessions on, or None if it's down."""
+    try:
+        return {s.get("Hostname") for s in broker.describe_servers()
+                if s.get("Availability") == "AVAILABLE"}
+    except Exception:
+        return None  # broker unreachable: fail open on that signal
+
+
 def _annotate_machines(machines: list[dict]) -> None:
-    """Display state + provisioning awareness: a running instance whose DCV
-    server hasn't registered with the broker isn't connectable yet."""
+    """Honest states for running instances. Connectable needs BOTH signals:
+    the desktop's DCV port answers (the OS is really up — EC2 "running" lies
+    for minutes during boot/RAM-restore) AND the broker lists the server
+    AVAILABLE (session placement works — this lags the port by ~30–90 s).
+    Ladder: "Getting ready…"+bar (true first-boot provisioning, fresh marker)
+    → "Waking up…" (port down) → "Almost ready…" (port up, broker syncing)
+    → Running."""
     for m in machines:
         m["label"], m["css"] = _display_state(m)
-    try:
-        avail = {s.get("Hostname") for s in broker.describe_servers()
-                 if s.get("Availability") == "AVAILABLE"}
-    except Exception:
-        avail = None  # broker unreachable: fail open on that check
-    if avail is not None:
-        for m in machines:
-            if m["css"] == "running" and m.get("private_ip"):
-                if "ip-" + m["private_ip"].replace(".", "-") not in avail:
-                    m["label"], m["css"] = "Getting ready…", "pending"
-                    m["progress"] = aws_ec2.provision_status(m["id"])
-    # honest wake state: EC2 "running" isn't connectable until DCV answers
+    avail = _broker_available_hosts()
     runners = [m for m in machines if m["css"] == "running" and m.get("private_ip")]
-    if runners:
-        with ThreadPoolExecutor(max_workers=min(8, len(runners))) as ex:
-            up = list(ex.map(lambda m: _dcv_reachable(m["private_ip"]), runners))
-        for m, ok in zip(runners, up):
-            if not ok:
-                m["label"], m["css"], m["waking"] = "Waking up…", "pending", True
+    if not runners:
+        return
+    with ThreadPoolExecutor(max_workers=min(8, len(runners))) as ex:
+        up = list(ex.map(lambda m: _dcv_reachable(m["private_ip"]), runners))
+    for m, ok in zip(runners, up):
+        in_broker = (avail is None) or ("ip-" + m["private_ip"].replace(".", "-") in avail)
+        if ok and in_broker:
+            continue  # truly Running
+        progress = aws_ec2.provision_status(m["id"]) if not in_broker else None
+        if progress:
+            m["label"], m["css"] = "Getting ready…", "pending"
+            m["progress"] = progress
+        elif not ok:
+            m["label"], m["css"], m["waking"] = "Waking up…", "pending", True
+        else:
+            m["label"], m["css"], m["almost"] = "Almost ready…", "pending", True
 
 
 def _display_state(m: dict) -> tuple[str, str]:
@@ -315,7 +328,16 @@ def _ensure_session(owner_local: str) -> dict:
             return s
     # don't double-create while one is still being born
     if not any(s.get("State") == "CREATING" for s in sessions):
-        broker.create_session(name=f"{owner_local}-desktop", owner=owner_local)
+        # the broker's availability view can lag the desktop by ~30-90s after
+        # a boot/close — absorb that window instead of erroring at the user
+        for attempt in range(6):
+            try:
+                broker.create_session(name=f"{owner_local}-desktop", owner=owner_local)
+                break
+            except RuntimeError as e:
+                if "No DCV server found" not in str(e) or attempt == 5:
+                    raise
+                time.sleep(5)
     for _ in range(45):
         time.sleep(2)
         for s in broker.describe_sessions(owner=owner_local):
@@ -358,10 +380,14 @@ def connect(request: Request, instance_id: str):
         return _render("starting.html", user=user, machine=m)
     if m["state"] != "running":
         return _render("starting.html", user=user, machine=m)
-    if m.get("private_ip") and not _dcv_reachable(m["private_ip"]):
-        # EC2 says running but the OS is still restoring — a broker session
-        # handed out now would resolve to a desktop the gateway can't reach
-        return _render("starting.html", user=user, machine=m)
+    if m.get("private_ip"):
+        # EC2 "running" isn't connectable: the OS may still be booting or
+        # restoring RAM (port closed), and the broker can't place a session
+        # until it re-lists the server — gate Connect on both signals
+        avail = _broker_available_hosts()
+        in_broker = (avail is None) or ("ip-" + m["private_ip"].replace(".", "-") in avail)
+        if not (_dcv_reachable(m["private_ip"]) and in_broker):
+            return _render("starting.html", user=user, machine=m)
 
     # the machine's LocalUser tag, NOT derived from the Owner UPN: build boxes
     # have a fixed shared session user that no UPN maps to
