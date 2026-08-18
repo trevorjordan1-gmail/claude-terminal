@@ -78,6 +78,23 @@ append_block() {
     rm -f "$tmp"
 }
 
+# sudo_append_block <file> <marker>   (block content on stdin)
+# append_block for root-owned files (/etc/bash.bashrc, /etc/profile.d/…):
+# same "# >>> marker >>>" span, read + written through sudo.
+sudo_append_block() {
+    local file="$1" marker="$2" content tmp
+    content="$(cat)"
+    tmp="$(mktemp)"
+    sudo cat "$file" 2>/dev/null | awk -v m="$marker" '
+        $0 == "# >>> " m " >>>" { inblock = 1; next }
+        $0 == "# <<< " m " <<<" { inblock = 0; next }
+        !inblock { print }
+    ' > "$tmp"
+    printf '# >>> %s >>>\n%s\n# <<< %s <<<\n' "$marker" "$content" "$marker" >> "$tmp"
+    sudo install -D -m 0644 "$tmp" "$file"
+    rm -f "$tmp"
+}
+
 # ---- environment helpers ---------------------------------------------------------
 # Make gsettings/dconf work when invoked over SSH / from a pipe, as long as the
 # user has a systemd user session. Returns 1 when there is no user bus at all.
@@ -106,9 +123,19 @@ gui_conf() {
 # impossible (no user bus AND no dbus-run-session binary).
 gui_conf_ready() { ensure_user_dbus || have dbus-run-session; }
 
-# True once Claude Code is installed AND logged in (plugin operations need both).
+# True when the kit's managed settings pin Claude Code to Amazon Bedrock
+# (medical boxes): creds come from the instance role, so no OAuth login
+# exists or is needed there.
+claude_bedrock_ready() {
+    [ -r /etc/claude-code/managed-settings.json ] && have jq \
+        && [ "$(jq -r '.env.CLAUDE_CODE_USE_BEDROCK // empty' /etc/claude-code/managed-settings.json 2>/dev/null)" = "1" ]
+}
+
+# True once Claude Code is installed AND (logged in OR pinned to Bedrock) —
+# the state the plugin modules need. (Plugin install itself needs no auth;
+# the gate keeps the "run claude to log in" reminder honest.)
 claude_ready() {
-    have claude && [ -f "$HOME/.claude/.credentials.json" ]
+    have claude && { [ -f "$HOME/.claude/.credentials.json" ] || claude_bedrock_ready; }
 }
 
 # True on a DCV/cloud terminal: the fleet provisioner drops
@@ -117,4 +144,15 @@ claude_ready() {
 # gate anything GDM/lock/login-shaped behind this.
 is_dcv_terminal() {
     [ -f /etc/asp-terminal.env ] || pkg_installed nice-dcv-server
+}
+
+# Read one KEY from /etc/asp-terminal.env (KEY=VALUE lines the platform writes).
+asp_env() { sed -n "s/^$1=//p" /etc/asp-terminal.env 2>/dev/null | head -1; }
+
+# True on a medical (Ai Build Medical, PHI-approved) terminal. The signal is
+# STATE on the box, never a flag: the DCV updater re-runs get.sh daily with no
+# arguments. The platform writes ASP_PROFILE=medical into /etc/asp-terminal.env;
+# `bootstrap.sh --medical` writes the marker for a box flipped by hand.
+is_medical_terminal() {
+    grep -qsx 'ASP_PROFILE=medical' /etc/asp-terminal.env || [ -f /etc/claude-terminal/medical ]
 }

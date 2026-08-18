@@ -54,7 +54,9 @@ fi
 
 if have claude; then
     p "claude $(claude --version 2>/dev/null | head -1)"
-    if claude_ready; then p "claude logged in"; else s "claude not logged in yet (run 'claude')"; fi
+    if claude_bedrock_ready; then p "claude → Amazon Bedrock (managed settings; no login needed)"
+    elif claude_ready; then p "claude logged in"
+    else s "claude not logged in yet (run 'claude')"; fi
 else
     f "claude not on PATH"
 fi
@@ -238,6 +240,67 @@ else
         fi
     else
         s "no SRStreamer.service — shim check skipped"
+    fi
+fi
+
+# ---- medical mode ----------------------------------------------------------------
+# Only on Ai Build Medical terminals; the bar is zero FAILs on a fresh provision.
+if is_medical_terminal; then
+    log "medical mode (Ai Build Medical)"
+    M=/etc/claude-code/managed-settings.json
+    if [ -r "$M" ] && [ "$(jq -r '.env.CLAUDE_CODE_USE_BEDROCK // empty' "$M" 2>/dev/null)" = "1" ]; then
+        p "managed settings pin Claude Code to Bedrock"
+        for k in AWS_REGION ANTHROPIC_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL; do
+            v="$(jq -r ".env.$k // empty" "$M" 2>/dev/null)"
+            if [ -n "$v" ]; then p "managed env $k=$v"; else f "managed env $k missing"; fi
+        done
+    else
+        f "$M missing or does not set CLAUDE_CODE_USE_BEDROCK=1 (08-medical-bedrock)"
+    fi
+    if grep -q '^# >>> claude-terminal medical env >>>' /etc/bash.bashrc 2>/dev/null; then
+        p "/etc/bash.bashrc exports the Bedrock env (DCV shells are non-login)"
+    else
+        f "/etc/bash.bashrc lacks the medical env block"
+    fi
+    if [ -f /etc/profile.d/claude-terminal-medical.sh ]; then p "profile.d medical env present"; else f "/etc/profile.d/claude-terminal-medical.sh missing"; fi
+
+    KEYRE='^[[:space:]]*(export[[:space:]]+)?(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|GEMINI_API_KEY|OPENROUTER_API_KEY)='
+    keyhit=0
+    for kf in /etc/environment /etc/profile.d/*.sh "$HOME/.bashrc" "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.claude-mem/.env"; do
+        [ -f "$kf" ] || continue
+        if grep -qE "$KEYRE" "$kf" 2>/dev/null; then f "provider credential line in $kf"; keyhit=1; fi
+    done
+    if [ -s "$HOME/.claude/settings.json" ] && jq -e '(.env.ANTHROPIC_API_KEY // .env.ANTHROPIC_AUTH_TOKEN // .apiKeyHelper) != null' "$HOME/.claude/settings.json" >/dev/null 2>&1; then
+        f "API-key settings in ~/.claude/settings.json"; keyhit=1
+    fi
+    [ "$keyhit" = 0 ] && p "no provider API keys on the box"
+    [ -f "$HOME/.claude/.credentials.json" ] && s "OAuth login present in ~/.claude (unused — Bedrock forced; a medical box should not carry one)"
+
+    CMS="$HOME/.claude-mem/settings.json"
+    if [ -s "$CMS" ] && [ "$(jq -r '.CLAUDE_MEM_MODEL // empty' "$CMS" 2>/dev/null)" = "sonnet" ] \
+       && [ "$(jq -r '.CLAUDE_MEM_TELEMETRY // empty' "$CMS" 2>/dev/null)" = "0" ]; then
+        p "claude-mem pinned (sonnet via CLI, telemetry off)"
+    else
+        f "claude-mem settings not pinned (21-medical-claude-mem)"
+    fi
+
+    if [ -f /usr/share/backgrounds/claude-terminal-medical.svg ]; then p "medical wallpaper installed"; else f "medical wallpaper missing"; fi
+    if have gsettings && gsettings list-schemas 2>/dev/null | grep -q '^org\.gnome\.desktop\.background$'; then
+        if [ "$(gsettings get org.gnome.desktop.background picture-uri 2>/dev/null)" = "'file:///usr/share/backgrounds/claude-terminal-medical.svg'" ]; then
+            p "medical wallpaper selected"
+        else
+            f "wallpaper is $(gsettings get org.gnome.desktop.background picture-uri 2>/dev/null || echo unreadable)"
+        fi
+    fi
+    if grep -q '^# >>> claude-terminal medical banner >>>' "$HOME/.bashrc" 2>/dev/null; then p "shell banner installed"; else f "shell banner missing from ~/.bashrc"; fi
+    if grep -q 'Ai Build Medical' /etc/motd 2>/dev/null; then p "motd line present"; else f "motd line missing"; fi
+
+    # Host-side belt-and-braces: the enforced permissions come from the broker
+    # per session; desktop-setup.sh also writes the deny into default.perm.
+    if grep -qE '^[[:space:]]*%any%[[:space:]]+deny[[:space:]]+.*file-download' /etc/dcv/default.perm 2>/dev/null; then
+        p "DCV default.perm denies file-download"
+    else
+        f "/etc/dcv/default.perm does not deny file-download (host: desktop-setup.sh medical branch)"
     fi
 fi
 
