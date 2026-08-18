@@ -28,6 +28,12 @@ The box cannot read its own tags (the desktop role has no `ec2:DescribeTags`
 and the hostname is the private IP), so the portal writes `ASP_MACHINE_NAME`
 and `ASP_BACKUP_CLIENT` into `/etc/asp-terminal.env` at launch.
 
+A terminal provisioned before the portal wrote those falls back to its client
+code from `ASP_CUSTOMER` and its **instance id** — deliberately not its
+hostname, which is a private IP that AWS can hand to a later instance, quietly
+pointing two terminals at one repo. To give such a box its readable name,
+append the two lines to `/etc/asp-terminal.env` before arming it.
+
 ## Configure a tenant
 
 `/asp/backup/config` — **SecureString**, JSON:

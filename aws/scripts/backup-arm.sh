@@ -39,8 +39,19 @@ fi
 
 # Identity: the portal writes both; fall back for terminals provisioned before
 # it did, so re-running this on an older box still lands in the right place.
+# NOT the hostname — it is the private IP, and AWS recycles those, so two
+# different terminals could end up sharing one repo. The instance id cannot
+# collide. Set ASP_MACHINE_NAME on an older box first if you want the readable
+# name in the prefix.
 CLIENT="${ASP_BACKUP_CLIENT:-${ASP_CUSTOMER%%-*}}"
-MACHINE="${ASP_MACHINE_NAME:-$(hostname -s)}"
+MACHINE="${ASP_MACHINE_NAME:-}"
+if [ -z "$MACHINE" ]; then
+  TOKEN=$(curl -s -X PUT http://169.254.169.254/latest/api/token \
+          -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null)
+  MACHINE=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+            http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
+fi
+[ -n "$MACHINE" ] || { echo "backup-arm: cannot determine machine identity — not arming" >&2; exit 1; }
 REPO="s3:${ENDPOINT%/}/$BUCKET/$CLIENT/$MACHINE"
 
 command -v restic >/dev/null || { apt-get update -y && apt-get install -y restic; }
