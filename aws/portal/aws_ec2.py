@@ -5,7 +5,6 @@ launch template, terminated on user removal. IAM scopes every mutating call
 to Role=desktop + Customer tags.
 """
 
-import base64
 import re
 
 import boto3
@@ -16,7 +15,7 @@ _ec2 = boto3.client("ec2", region_name=config.REGION)
 _ssm = boto3.client("ssm", region_name=config.REGION)
 _s3 = boto3.client("s3", region_name=config.REGION)
 
-BOOTSTRAP = """#!/bin/bash
+BOOTSTRAP = r"""#!/bin/bash
 set -uxo pipefail
 export DEBIAN_FRONTEND=noninteractive
 until apt-get update -y; do sleep 5; done

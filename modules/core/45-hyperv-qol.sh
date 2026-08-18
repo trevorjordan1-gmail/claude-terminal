@@ -27,8 +27,8 @@ fi
 
 # Xorg on hyperv_drm needs the user in the video group for /dev/fb0.
 if ! id -nG | grep -qw video; then
-    sudo usermod -aG video "$USER" || fail "usermod -aG video failed"
+    sudo usermod -aG video "$(id -un)" || fail "usermod -aG video failed"
     next_step "Log out and back in (or reboot) so the scroll fix and video-group change take effect."
 fi
 
-ok "hi-res wheel scrolling disabled; $USER in video group"
+ok "hi-res wheel scrolling disabled; $(id -un) in video group"

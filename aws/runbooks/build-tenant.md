@@ -119,7 +119,7 @@ cert_email       = "<ops-contact@org>"
 artifacts_bucket = "$ORG-asp-artifacts-$ACCT"
 EOF
 terraform init -backend-config=backend.hcl && terraform apply
-# outputs: portal_url, gateway_endpoint, controlplane_public_ip, dns_records_needed, instance ids
+# outputs: portal_url, gateway_endpoint, controlplane_public_ip, controlplane_instance_id, dns_records_needed, desktop_launch_template_id, desktop_subnet_ids, client_code, bedrock_zdr_scp_json
 ```
 What it creates: VPC 10.60.0.0/16 (public subnet + 2 private), fck-nat t4g.nano,
 SG-to-SG rules (desktops reachable ONLY from control plane on 8443 tcp+udp;
@@ -127,7 +127,7 @@ broker 8445 only from desktops; world sees 443 + 8443 only), IAM roles
 (dcv-license S3 read; portal: tag-scoped power+terminate, RunInstances +
 PassRole(desktop role) + CreateTags-on-RunInstances, tag-scoped ssm:SendCommand;
 SSM core + artifacts + `/asp/*` params), control plane t4g.small + EIP, and the
-**desktop launch template** (t3.large, hibernation, 50 GB encrypted gp3).
+**desktop launch template** (m5a.large, hibernation, 50 GB encrypted gp3, 250 MB/s).
 **No desktop instances** — users/terminals are created from the portal admin
 page after §7. Add LAUNCH_TEMPLATE_ID + SUBNET_IDS + CLIENT_CODE (from the
 Terraform outputs) to the `/asp/portal/config` SSM param. New desktops
@@ -160,16 +160,19 @@ the pattern for every script: `aws s3 cp s3://<artifacts>/scripts/<x>.sh /opt/as
 3. `portal-deploy.sh` — venv + systemd `asp-portal` on 127.0.0.1:8080, nginx TLS front.
 
 Desktops: boot user-data runs `desktop-setup.sh` (users, GNOME, workbench) and
-chains `dcv-desktop-install.sh` **only if the broker CA is already in the
-bucket**; otherwise re-run `desktop-setup.sh` via SSM after step 2.
+chains `dcv-desktop-install.sh` **only if that script is already in the
+bucket** (it then copies the broker CA from `certs/` — publish the CA in step 2
+first, or the agent's `ca-file` points at nothing); otherwise re-run
+`desktop-setup.sh` via SSM after step 2.
 
 ## 8. Verify (expected outputs in brackets)
 
 ```bash
 # on the control plane via SSM:
-bash /opt/asp/broker-check.sh          # [token_len=358; servers: both desktops AVAILABLE]
-bash /opt/asp/session-test.sh          # [session READY; owner+guest token_len ~400; perm grant successful]
+systemctl is-active dcv-session-manager-broker dcv-connection-gateway asp-portal  # [active ×3]
+curl -sk https://localhost:8446/sessionConnectionData/x/y | head -c 200        # [broker answers (auth error is fine)]
 curl -s http://127.0.0.1:8080/healthz  # [{"ok":true,...}]
+# after the first terminal is provisioned: its DCV server shows AVAILABLE on the portal (Connect works)
 # from anywhere:
 curl -s https://portal.<dns_zone>/healthz          # valid LE cert + {"ok":true}
 openssl s_client -connect gw.<dns_zone>:8443 </dev/null | openssl x509 -noout -issuer  # [Let's Encrypt]
@@ -213,7 +216,7 @@ change that spans both ships as one commit — no cross-repo contract dance.
 
 | Gotcha | Fix (already encoded in scripts) |
 |---|---|
-| Gateway deb URL 404 | filename needs `-1`: `nice-dcv-connection-gateway_2025.0.886-1_arm64.ubuntu2404.deb` |
+| DCV package URL 404 | never pin versioned CDN paths — the `-1` packaging suffix moved once. Both install scripts now use the CDN root's **always-latest aliases** (`nice-dcv-connection-gateway_arm64.ubuntu2404.deb` etc.) and exit FATAL on a failed download |
 | Agent won't start: `missing field version` | `agent.conf` requires top-level `version = '0.1'` |
 | Agent/gateway TLS fails to broker | broker's self-signed cert SAN covers ONLY the short hostname (`ip-10-60-0-x`) + IP → use the short name in `broker_host`, `auth-token-verifier`, `[resolver] url` (resolves via VPC search domain; keeps `tls_strict = true`) |
 | Gateway `Permission denied` on conf | a `umask 077` earlier in a script made the conf unreadable — keep tight umasks in subshells |
@@ -221,8 +224,8 @@ change that spans both ships as one commit — no cross-repo contract dance.
 | SG rules vanish on apply | never mix inline SG rules with `aws_security_group_rule` on the same SG (control-plane SG is standalone-rules-only) |
 | Broker API port | broker client API default 8443 collides with the gateway → moved to **8446**; agents 8445; resolver 8447 |
 | CF token IP filter | see §1 — breaks in-tenant certbot with a confusing error |
-| Collab guests 403 at DCV | guests must exist as OS users on every desktop (`ASP_ALL_USERS` handles it) |
-| Renaming/re-keying desktops destroys them | `for_each` key changes need `terraform state mv` AND the key→subnet math will move instances — `lifecycle.ignore_changes=[subnet_id]` pins existing terminals; verify the plan says "updated in-place" before applying |
+| Collab guests 403 at DCV | guests must exist as OS users on the target desktop — the portal creates them on demand at share time (`ensure_os_user` via SSM); provisioning writes the owner only |
+| (historical) Renaming/re-keying terraform-managed desktops destroyed them | desktops left terraform state 2026-08-15 (portal-provisioned from the launch template) — kept only as a warning if anyone puts instances back under `for_each` |
 | SG rules silently missing after refactor | converting inline SG rules to standalone resources leaves the ORIGINAL rules in AWS → duplicate errors that `-auto-approve` piping can hide; revoke the unmanaged rules then apply, and never grep terraform output for `^Apply` (ANSI codes defeat anchors — use `-no-color`) |
 | EC2 reboot looks like "nothing happened" | instance state stays `running` through a reboot — the portal shows an action banner explaining this; don't chase a phantom bug |
 | Session created but never READY | check `nice-xdcv` installed and `/etc/dcv/dcvsessioninit` (ASP-owned: exports the Ubuntu desktop identity, execs `/etc/X11/Xsession`) |
@@ -250,9 +253,8 @@ change that spans both ships as one commit — no cross-repo contract dance.
    newest build for every platform (CDN *root aliases* are always-latest;
    version labels resolved by `portal/downloads.py`: scrape amazondcv.com,
    fall back to `latest.json` — note latest.json LAGS the aliases, don't trust
-   it for URLs). Managed clients: push the Windows MSI via CWRMM
-   (`cwrmm_deploy.py`, see SYSTEMS.md; silent:
-   `msiexec /i nice-dcv-client-Release.msi /qn`).
+   it for URLs). Managed clients: push the Windows MSI with your RMM
+   (silent: `msiexec /i nice-dcv-client-Release.msi /qn`).
 3. **Client firewall**: outbound TCP 8443 required, UDP 8443 preferred (QUIC;
    auto-falls back to TCP).
 
@@ -274,8 +276,9 @@ cost (~EBS only), but state survives.** Activity = any of:
 
 Default: 30 idle minutes → hibernate; never within 15 min of boot (wedge risk).
 **All tunable from the admin page** ("Idle & cost settings": enable/disable,
-idle minutes, Claude CPU-sec threshold, load threshold — stored in SSM
-`/asp/idle/config`), with **per-terminal overrides** on each terminal card
+idle minutes, sensitivity preset — stored in SSM `/asp/idle/config`; the raw
+CPU-sec/load thresholds are the watchdog's constants), with **per-terminal
+overrides** on each terminal card
 (default / keep awake / custom minutes — stored as instance tags
 `IdlePolicy` / `IdleMinutes`, so they survive everything and are visible in
 the AWS console too). Logs: `journalctl -u asp-idle-watchdog`.
@@ -365,8 +368,8 @@ first (leaves the setting ON, which is what you want), then destroy.
 
 ## Known open items (update as they land)
 
-- 60-day hibernation cap handling in the portal — not built yet (watchdog
-  makes long paused stretches the norm, so this matters more now).
+- (done 2026-08-16) 60-day hibernation cap: the watchdog converts Pause→Off
+  after 48 h (§11.4).
 - Broker persistence is in-memory: a control-plane reboot drops session records
   (they recreate on next Connect); enable DynamoDB/MySQL persistence if that bites.
 - Portal share-grants (`_grants`) are in-process memory — restart loses guest

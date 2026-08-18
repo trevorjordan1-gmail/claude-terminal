@@ -7,6 +7,8 @@
 #   ./bootstrap.sh --with-docker --with-xrdp
 #   ./bootstrap.sh --all-extras            # every extra except weak-passwords/splashtop
 #   ./bootstrap.sh --list                  # show modules
+#   ./bootstrap.sh --medical               # DCV terminals only: mark the box Ai Build Medical
+#   ./bootstrap.sh --force-os              # skip the Ubuntu 24.04 check
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,10 +27,11 @@ Options:
                    which require explicit intent).
   --list           Show all modules and descriptions, then exit.
   --force-os       Skip the Ubuntu 24.04 check.
-  --medical        Mark this box as an Ai Build Medical (PHI-approved) terminal:
-                   writes /etc/claude-terminal/medical so the medical modules run
-                   on this and every later run (Claude Code → Amazon Bedrock only).
-                   DCV terminals normally get this from the platform instead.
+  --medical        DCV terminals only: mark this box as an Ai Build Medical
+                   (PHI-approved) terminal — writes /etc/claude-terminal/medical so
+                   the medical modules run on this and every later run (Claude Code
+                   → Amazon Bedrock only). The platform normally sets this itself
+                   (ASP_PROFILE=medical); refused on non-DCV boxes.
   -h, --help       This help.
 
 Examples:
@@ -86,6 +89,7 @@ sudo -v || die "sudo access is required."
 # --medical is state, not a per-run switch: the marker persists so unattended
 # re-runs (the DCV updater passes no flags) keep the box medical.
 if [ "${CT_MEDICAL:-0}" = 1 ]; then
+    is_dcv_terminal || die "--medical is DCV-only for now: this box has no /etc/asp-terminal.env and no DCV server (marker not written)."
     { sudo install -d -m 0755 /etc/claude-terminal && sudo touch /etc/claude-terminal/medical; } \
         || die "could not write /etc/claude-terminal/medical"
     log "medical mode marker written — the medical modules run on this and every later run"

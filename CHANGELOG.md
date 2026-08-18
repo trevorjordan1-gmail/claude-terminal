@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-08-18 — review follow-ups: always-latest DCV packages, medical consistency, doc drift
+
+- **aws:** DCV installs use the CDN root's always-latest aliases (a hand-pinned
+  gateway filename had already 404'd — the `-1` packaging suffix moved), and
+  fail loudly instead of leaving a control plane without a gateway; `rollout.sh`
+  no longer dirties the tracked `portal/VERSION`; `client_code` is now a
+  terraform output (the runbook always said "from the outputs"); portal lint.
+- **kit (medical):** `--medical` refuses non-DCV boxes and verify's medical
+  section SKIPs there instead of FAILing forever; the API-key sweep removes
+  the same five provider keys verify checks; one parser for
+  `/etc/asp-terminal.env`; the post-login hook now fires on Bedrock boxes
+  (no OAuth login there) and bakes the repo path; verify's `default.perm`
+  check SKIPs until DCV is installed (provision-time verify runs first).
+- **kit:** `$(id -un)` instead of `$USER` in 45-hyperv-qol and the docker
+  extra (`set -u` hazard).
+- **docs:** runbook (m5a.large, verify commands, gateway gotcha, guest OS
+  users, admin tuning, closed open item), build-boxes (GROUP_BUILD_ENGINEERS
+  goes in SSM `/asp/portal/config`, not the regenerated env file), aws/README
+  (Chrome), root README (core table incl. medical modules, base-cli list,
+  updater cadence, quick start), DEVELOPMENT repo map, spec naming.
+
+## 2026-08-17 — Windows: `cctemp`, a temporary troubleshooting install
+
+- `windows/cctemp.ps1` puts Claude Code on a Windows box for the duration of a
+  troubleshooting engagement only (user-profile scoped, no admin), with a
+  dead-man switch that purges it after 30 days without use (idle-based,
+  offline-safe; `-AutoCleanupDays`, `-Cleanup`). README "Windows: temporary
+  troubleshooting install".
+
 ## 2026-08-18 — medical mode (Ai Build Medical), aws/ side
 
 - **`profile = "medical"` per tenant.** One terraform variable reaches every
@@ -36,7 +65,7 @@
   fake medical DCV box (all OK, idempotent) and once non-medical (modules
   SKIP, nothing else changes). Design:
   `docs/superpowers/specs/2026-08-18-medical-mode-design.md`. The aws/ half
-  (profile var, IAM, ZDR lock, DCV deny) is the next step.
+  (profile var, IAM, ZDR lock, DCV deny) landed the same day — see above.
 
 ## 2026-08-18 — platform: Chrome + streaming tuning land on main; kit follows the dock
 

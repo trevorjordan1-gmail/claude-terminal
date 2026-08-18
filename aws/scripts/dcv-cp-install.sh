@@ -1,14 +1,21 @@
 #!/bin/bash
 # Control plane: Session Manager Broker + Connection Gateway (Ubuntu 24.04 arm64).
-# Versions + config keys per docs.aws.amazon.com/dcv (sm-admin, gw-admin), verified 2026-08-15.
+# Config keys per docs.aws.amazon.com/dcv (sm-admin, gw-admin), verified 2026-08-15.
 # Idempotent; re-runnable via SSM.
 set -uxo pipefail
 source /etc/asp-terminal.env
 export DEBIAN_FRONTEND=noninteractive
 
-BROKER_DEB="nice-dcv-session-manager-broker_2025.0.561-1_all.ubuntu2404.deb"
-GATEWAY_DEB="nice-dcv-connection-gateway_2025.0.886_arm64.ubuntu2404.deb"
-CDN="https://d1uj6qtbmh3dt5.cloudfront.net/2025.0"
+# Always-latest: the CDN root serves unversioned aliases for every component
+# (verified 2026-08-18: HTTP 200 for these, while a hand-pinned versioned name
+# had already 404'd once — the "-1" packaging suffix moved under us). The
+# install is guarded by dpkg, so a newer alias only matters on fresh builds.
+CDN="https://d1uj6qtbmh3dt5.cloudfront.net"
+BROKER_DEB="nice-dcv-session-manager-broker_all.ubuntu2404.deb"
+GATEWAY_DEB="nice-dcv-connection-gateway_arm64.ubuntu2404.deb"
+fetch() {  # fetch <name> — download an alias to /tmp, or stop the build loudly
+  wget -q "$CDN/$1" -O "/tmp/$1" || { echo "FATAL: download failed: $CDN/$1" >&2; exit 1; }
+}
 PROPS=/etc/dcv-session-manager-broker/session-manager-broker.properties
 CA_SRC=/var/lib/dcvsmbroker/security/dcvsmbroker_ca.pem
 
@@ -20,8 +27,8 @@ fi
 
 # ---- broker ----
 if ! dpkg -s nice-dcv-session-manager-broker >/dev/null 2>&1; then
-  wget -q "$CDN/SessionManagerBrokers/$BROKER_DEB" -O "/tmp/$BROKER_DEB"
-  apt-get install -y "/tmp/$BROKER_DEB"
+  fetch "$BROKER_DEB"
+  apt-get install -y "/tmp/$BROKER_DEB" || { echo "FATAL: broker install failed" >&2; exit 1; }
 fi
 
 # 2GB host: shrink the hardcoded JVM heap (-Xmx2g) and the off-heap cache
@@ -66,8 +73,8 @@ fi
 
 # ---- gateway ----
 if ! dpkg -s nice-dcv-connection-gateway >/dev/null 2>&1; then
-  wget -q "$CDN/Gateway/$GATEWAY_DEB" -O "/tmp/$GATEWAY_DEB"
-  apt-get install -y "/tmp/$GATEWAY_DEB"
+  fetch "$GATEWAY_DEB"
+  apt-get install -y "/tmp/$GATEWAY_DEB" || { echo "FATAL: gateway install failed" >&2; exit 1; }
 fi
 
 CERT_LINES=""

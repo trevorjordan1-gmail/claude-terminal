@@ -48,7 +48,7 @@ itself with `is_dcv_terminal` (set by `/etc/asp-terminal.env`). The platform
   disallowed by design**; cups masked), file transfer (storage root = home),
   single-display policy, TLS, idle watchdog, self-update timer.
 - Users and sudo (`/etc/sudoers.d/010-<user>-nopasswd`, dir mode 755).
-- Firefox (snap) installed and pinned; snap XDG paths wired into the session.
+- Google Chrome (native deb + managed streaming policy pack) installed and dock-locked; the Firefox snap is removed.
 
 Terminals re-run the kit's `get.sh` from `main` on every fleet release —
 **main is production** for cloud fleets: idempotent and non-interactive are

@@ -79,12 +79,14 @@ if have uv || [ -x "$HOME/.local/bin/uv" ]; then p "uv installed"; else f "uv mi
 if [ -d "$HOME/.claude/plugins/cache/thedotmack" ]; then
     p "claude-mem plugin (thedotmack) present"
 else
-    s "claude-mem plugin not installed yet (needs claude login + re-run bootstrap)"
+    if claude_bedrock_ready; then s "claude-mem plugin not installed yet (re-run ./bootstrap.sh or cct-finish)"
+    else s "claude-mem plugin not installed yet (needs claude login + re-run bootstrap)"; fi
 fi
 if [ -d "$HOME/.claude/plugins/cache/superpowers-marketplace" ]; then
     p "superpowers plugin present"
 else
-    s "superpowers plugin not installed yet (needs claude login + re-run bootstrap)"
+    if claude_bedrock_ready; then s "superpowers plugin not installed yet (re-run ./bootstrap.sh or cct-finish)"
+    else s "superpowers plugin not installed yet (needs claude login + re-run bootstrap)"; fi
 fi
 
 # claude-mem runtime artifacts only exist after the first claude session
@@ -245,7 +247,10 @@ fi
 
 # ---- medical mode ----------------------------------------------------------------
 # Only on Ai Build Medical terminals; the bar is zero FAILs on a fresh provision.
-if is_medical_terminal; then
+# DCV-only, like the modules: a marker on a non-DCV box is a SKIP, not 15 FAILs.
+if is_medical_terminal && ! is_dcv_terminal; then
+    s "medical marker present but this is not a DCV terminal — medical mode is DCV-only, checks skipped"
+elif is_medical_terminal; then
     log "medical mode (Ai Build Medical)"
     M=/etc/claude-code/managed-settings.json
     if [ -r "$M" ] && [ "$(jq -r '.env.CLAUDE_CODE_USE_BEDROCK // empty' "$M" 2>/dev/null)" = "1" ]; then
@@ -296,8 +301,12 @@ if is_medical_terminal; then
     if grep -q 'Ai Build Medical' /etc/motd 2>/dev/null; then p "motd line present"; else f "motd line missing"; fi
 
     # Host-side belt-and-braces: the enforced permissions come from the broker
-    # per session; desktop-setup.sh also writes the deny into default.perm.
-    if grep -qE '^[[:space:]]*%any%[[:space:]]+deny[[:space:]]+.*file-download' /etc/dcv/default.perm 2>/dev/null; then
+    # per session; desktop-setup.sh also writes the deny into default.perm —
+    # after the DCV server is installed, which is later than the provision-time
+    # verify run, so "no DCV yet" is a SKIP.
+    if [ ! -d /etc/dcv ]; then
+        s "DCV server not installed yet — default.perm check n/a"
+    elif grep -qE '^[[:space:]]*%any%[[:space:]]+deny[[:space:]]+.*file-download' /etc/dcv/default.perm 2>/dev/null; then
         p "DCV default.perm denies file-download"
     else
         f "/etc/dcv/default.perm does not deny file-download (host: desktop-setup.sh medical branch)"

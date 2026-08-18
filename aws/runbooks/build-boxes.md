@@ -65,9 +65,11 @@ One-time, on the operator tenant only:
 1. Entra: create a security group for build engineers (plain security group;
    the app's `groupMembershipClaims: SecurityGroup` already puts it in
    tokens). Add the engineers.
-2. Portal env (`/etc/asp-portal.env`): add
-   `GROUP_BUILD_ENGINEERS=<that group's object ID>`; restart the portal
-   service.
+2. Portal config: add `"GROUP_BUILD_ENGINEERS": "<that group's object ID>"`
+   to the `/asp/portal/config` SSM parameter (JSON), then re-run
+   `portal-deploy.sh` (or `rollout.sh portal`). Do NOT hand-edit
+   `/etc/asp-portal.env` — `portal-deploy.sh` regenerates it from SSM on
+   every deploy, so a hand-added line vanishes at the next rollout.
 3. Provision the first box from the machines page form.
 4. Verify **both directions**: an engineer who didn't create the box can see
    it, start it, and connect; a desktop user who is NOT in the group gets no

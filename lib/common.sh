@@ -147,12 +147,17 @@ is_dcv_terminal() {
 }
 
 # Read one KEY from /etc/asp-terminal.env (KEY=VALUE lines the platform writes).
-asp_env() { sed -n "s/^$1=//p" /etc/asp-terminal.env 2>/dev/null | head -1; }
+# The ONE parser for that file: tolerates `export`, CRLF and quoted values so
+# every consumer (is_medical_terminal, the medical modules) agrees.
+asp_env() {
+    sed -n -E "s/^[[:space:]]*(export[[:space:]]+)?$1=//p" /etc/asp-terminal.env 2>/dev/null \
+        | head -1 | tr -d '\r' | sed -E "s/^[[:space:]]*[\"']?//; s/[\"']?[[:space:]]*\$//"
+}
 
 # True on a medical (Ai Build Medical, PHI-approved) terminal. The signal is
 # STATE on the box, never a flag: the DCV updater re-runs get.sh daily with no
 # arguments. The platform writes ASP_PROFILE=medical into /etc/asp-terminal.env;
 # `bootstrap.sh --medical` writes the marker for a box flipped by hand.
 is_medical_terminal() {
-    grep -qsx 'ASP_PROFILE=medical' /etc/asp-terminal.env || [ -f /etc/claude-terminal/medical ]
+    [ "$(asp_env ASP_PROFILE)" = "medical" ] || [ -f /etc/claude-terminal/medical ]
 }
