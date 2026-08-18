@@ -25,6 +25,10 @@ Options:
                    which require explicit intent).
   --list           Show all modules and descriptions, then exit.
   --force-os       Skip the Ubuntu 24.04 check.
+  --medical        Mark this box as an Ai Build Medical (PHI-approved) terminal:
+                   writes /etc/claude-terminal/medical so the medical modules run
+                   on this and every later run (Claude Code → Amazon Bedrock only).
+                   DCV terminals normally get this from the platform instead.
   -h, --help       This help.
 
 Examples:
@@ -53,6 +57,7 @@ while [ $# -gt 0 ]; do
         -h|--help)    usage; exit 0 ;;
         --list)       list_modules; exit 0 ;;
         --force-os)   CT_FORCE_OS=1 ;;
+        --medical)    CT_MEDICAL=1 ;;
         --all-extras) for e in $SAFE_EXTRAS; do WITH+=("$e"); done ;;
         --with-*)     WITH+=("${1#--with-}") ;;
         *)            die "Unknown option: $1 (try --help)" ;;
@@ -77,6 +82,14 @@ export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:$PATH"
 
 log "sudo is needed for apt operations — you may be prompted once."
 sudo -v || die "sudo access is required."
+
+# --medical is state, not a per-run switch: the marker persists so unattended
+# re-runs (the DCV updater passes no flags) keep the box medical.
+if [ "${CT_MEDICAL:-0}" = 1 ]; then
+    { sudo install -d -m 0755 /etc/claude-terminal && sudo touch /etc/claude-terminal/medical; } \
+        || die "could not write /etc/claude-terminal/medical"
+    log "medical mode marker written — the medical modules run on this and every later run"
+fi
 
 CT_TMP="$(mktemp -d)"
 CT_NEXT="$CT_TMP/next-steps"
