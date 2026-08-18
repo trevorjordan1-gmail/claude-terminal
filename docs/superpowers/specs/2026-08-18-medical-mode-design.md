@@ -198,6 +198,9 @@ EBS default on, Fable refused); DCV client cannot download a file.
 
 PHI-tripwire hook pack (slot reserved), Hyper-V medical, an Org SCP
 resource, clipboard/upload lockdown, Terraform for account data retention.
+**No "un-medical" path, by decision (operator, 2026-08-18):** a medical
+terminal is never flipped back to standard; if an engagement needs a
+non-medical box, provision a separate Claude Code terminal on Amazon DCV.
 
 ## Working-tree rule (new)
 
