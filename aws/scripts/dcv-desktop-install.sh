@@ -40,7 +40,11 @@ cat > /etc/dcv/dcv.conf <<CONF
 # Without a fake vblank, mutter's frame clock stalls and GNOME renders BLACK
 # until poked — the root cause of every "black screen" in the PoC. Layout is
 # enforced by the portal (set-display-layout on Connect), not Xdcv args.
-virtual-session-xdcv-args="-fakescreenfps 60"
+# 30 fps, not 60: no GPU means every frame is composited by llvmpipe on the
+# CPU and encoded by dcvagent — at 60 the render+encode loop ate most of a
+# core on a busy screen (TJ 2026-08-17); 30 halves that ceiling and is fine
+# for terminal work.
+virtual-session-xdcv-args="-fakescreenfps 30"
 
 [session-management/defaults]
 
@@ -74,6 +78,9 @@ broker_port = 8445
 tls_strict = true
 ca_file = '/etc/dcv-session-manager-agent/dcvsmbroker_ca.pem'
 enable_query_logged_in_users = true
+# default 30s makes the broker take 30-90s to re-list a booted/resumed server
+# ("Almost ready…" limbo); 10s is documented-safe and cuts that ~2/3
+broker_update_interval = 10
 
 [log]
 level = 'info'

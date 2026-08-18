@@ -68,6 +68,9 @@ resource "aws_launch_template" "desktop" {
   name          = "asp-desktop"
   image_id      = data.aws_ami.ubuntu_amd64.id
   instance_type = var.desktop_instance_type
+  # the portal's RunInstances uses the DEFAULT version — without this, every
+  # template change strands new terminals on v1 (bit us: throughput bump)
+  update_default_version = true
 
   iam_instance_profile {
     name = aws_iam_instance_profile.desktop.name
@@ -86,6 +89,10 @@ resource "aws_launch_template" "desktop" {
       volume_type           = "gp3"
       encrypted             = true # required for hibernation
       delete_on_termination = true
+      # resume-from-Pause reads the whole RAM image through this volume —
+      # baseline 125 MB/s makes heavy resumes take 4+ min; 250 MB/s
+      # (~+$5/mo) roughly halves that, and burst bandwidth covers it
+      throughput = 250
     }
   }
   # user_data + tags are supplied per-launch by the portal

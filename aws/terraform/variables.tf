@@ -27,7 +27,9 @@ variable "control_plane_type" {
 }
 
 variable "desktop_instance_type" {
-  default = "t3.large"
+  # m5a.large: dedicated vCPUs (no burst-credit steal under sustained desktop
+  # load) at effectively the same price as t3-unlimited; hibernation-capable.
+  default = "m5a.large"
 }
 
 variable "artifacts_bucket" {
