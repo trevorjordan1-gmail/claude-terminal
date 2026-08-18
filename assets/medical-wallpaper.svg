@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101622"/>
+      <stop offset="1" stop-color="#1c2740"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect x="120" y="120" width="1680" height="840" rx="24" fill="none" stroke="#3b82f6" stroke-opacity="0.35" stroke-width="3"/>
+  <g font-family="DejaVu Sans, Ubuntu, sans-serif" fill="#e5e7eb" text-anchor="middle">
+    <text x="960" y="470" font-size="96" font-weight="bold" letter-spacing="2">Ai Build Medical</text>
+    <text x="960" y="560" font-size="40" fill="#93c5fd">PHI-approved environment</text>
+    <text x="960" y="640" font-size="30" fill="#cbd5e1">Claude runs on Amazon Bedrock inside this tenant only — zero data retention</text>
+    <text x="960" y="700" font-size="26" fill="#94a3b8">No files leave this session. Treat everything on this screen as protected health information.</text>
+    <text x="960" y="900" font-size="22" fill="#64748b">claude-terminal · medical profile</text>
+  </g>
+</svg>
