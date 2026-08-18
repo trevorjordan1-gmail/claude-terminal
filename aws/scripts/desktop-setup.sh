@@ -294,6 +294,15 @@ systemctl daemon-reload
 systemctl enable --now asp-auto-update.timer
 
 
+# ---- nightly backup (dormant unless the tenant configures one) ----
+# Arms restic against the tenant's backup bucket, one repo per machine under
+# <client>/<machine>. No-ops on tenants with no /asp/backup/config.
+if aws s3 cp "s3://$ASP_BUCKET/scripts/backup-arm.sh" /opt/asp/backup-arm.sh >/dev/null 2>&1; then
+  chmod +x /opt/asp/backup-arm.sh
+  bash /opt/asp/backup-arm.sh >> /var/log/asp-backup-arm.log 2>&1 \
+    || echo "WARN: backup-arm.sh failed — see /var/log/asp-backup-arm.log" >&2
+fi
+
 # ---- tenant extension hook (issue #1): sanctioned per-tenant customization ----
 # If the tenant bucket carries scripts/tenant-custom.sh, run it LAST. Contract: the
 # operator owns the file, it is idempotent (re-runs on every release), failure

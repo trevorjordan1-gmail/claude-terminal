@@ -182,6 +182,24 @@ data "aws_iam_policy_document" "desktop" {
     actions   = ["s3:ListBucket"]
     resources = [local.artifacts_arn]
   }
+  # backup config (bucket + S3-compatible credentials + repo password), read
+  # once at build by backup-arm.sh. Absent parameter = tenant has no backups.
+  statement {
+    sid       = "ReadBackupConfig"
+    actions   = ["ssm:GetParameter"]
+    resources = ["arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/asp/backup/config"]
+  }
+  statement {
+    sid     = "DecryptBackupConfig"
+    actions = ["kms:Decrypt"]
+    # the account's default SSM key; narrowed to SSM-mediated use
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["ssm.${var.region}.amazonaws.com"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "desktop" {
