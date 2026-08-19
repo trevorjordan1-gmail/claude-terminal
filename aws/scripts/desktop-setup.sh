@@ -91,6 +91,37 @@ JSON
 # /usr/local overrides /usr/share in XDG_DATA_DIRS so the dock and app grid
 # pick this entry up.
 mkdir -p /usr/local/share/applications
+# first run: no Terms-of-Service wall. Every new terminal, and every new user
+# on a shared build terminal, otherwise opens the browser into a ToS dialog
+# before it will render anything — on a machine the operator already accepted
+# terms for. --no-first-run alone does NOT fix this: it skips the tasks without
+# dropping the sentinel, so the wall returns on the next launch. The sentinel
+# file is what actually retires it; initial_preferences covers the rest of the
+# first-run UI (welcome page, default-browser nag, import prompts).
+cat > /opt/google/chrome/initial_preferences <<'JSON'
+{
+  "distribution": {
+    "skip_first_run_ui": true,
+    "suppress_first_run_default_browser_prompt": true,
+    "import_bookmarks": false,
+    "import_history": false,
+    "import_search_engine": false,
+    "make_chrome_default": false,
+    "verbose_logging": false
+  },
+  "first_run_tabs": []
+}
+JSON
+seed_chrome_first_run() {  # $1 = home dir, $2 = owner (empty for /etc/skel)
+  install -d "$1/.config/google-chrome"
+  : > "$1/.config/google-chrome/First Run"
+  [ -n "${2:-}" ] && chown -R "$2:$2" "$1/.config/google-chrome"
+}
+for u in $(echo "${ASP_ALL_USERS:-$ASP_LOCAL_USER}" | tr ',' ' '); do
+  h=$(getent passwd "$u" | cut -d: -f6)
+  [ -n "$h" ] && [ -d "$h" ] && seed_chrome_first_run "$h" "$u"
+done
+seed_chrome_first_run /etc/skel ""   # collab guests added later inherit it
 sed 's|Exec=/usr/bin/google-chrome-stable|Exec=/usr/bin/google-chrome-stable --disable-smooth-scrolling --force-prefers-reduced-motion --renderer-process-limit=2 --password-store=basic|g' \
   /usr/share/applications/google-chrome.desktop > /usr/local/share/applications/google-chrome.desktop
 
