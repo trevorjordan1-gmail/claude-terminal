@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-08-18 — nightly backups (#6), broker re-link after hibernation + Chrome ToS (#8), Software Updater polkit + sudo -v (#10)
+
+- **Nightly restic backups for every DCV system (#6):** `aws/scripts/backup-arm.sh`
+  (dormant unless the tenant has an `/asp/backup/config` SSM parameter) arms a
+  03:00 timer (`Persistent=true` — a paused box catches up on wake) backing
+  `/home` to `<bucket>/<client>/<machine>/`; `<client>` is the engagement code
+  for a build box and the tenant's own code for an ordinary terminal
+  (`ASP_MACHINE_NAME` / `ASP_BACKUP_CLIENT` now ride in `/etc/asp-terminal.env`
+  — the box cannot read its own tags). Fallback identity is the instance id,
+  never the hostname (a private IP AWS recycles). IAM: desktop role reads that
+  one parameter. Runbook `aws/runbooks/backups.md` (retention must match the
+  bucket's minimum-storage billing). Admin hardening on merge: env values are
+  quote-escaped, and the exclude list keeps Firefox-snap profiles (only snap
+  caches are skipped). 5 tests (25 total).
+- **The broker link survives hibernation (#8):** `aws/scripts/dcv-relink.sh`
+  restarts `dcv-session-manager-agent` on resume (system-sleep hook, `--no-block`)
+  and from a 60 s timer whenever its log has been silent 120 s (rate-limited to
+  one restart per 5 min) — a resumed box otherwise held an ESTABLISHED socket the
+  broker had long closed and stayed UNAVAILABLE. Chrome's first-run ToS wall is
+  retired at build (`First Run` sentinel for every user + `/etc/skel`, and
+  `initial_preferences`).
+- **Software Updater works (#10):** the terminal owner joins the `sudo` group —
+  the aptdaemon/snapd polkit rule (#2) keys on `isInGroup("sudo")`, which a
+  sudoers drop-in never satisfied, so the GUI fell to `auth_admin` for a user
+  with no password. **Kit follow-through, both platforms:** with a user in `sudo`,
+  sudoers' default `verifypw=all` makes `sudo -v` demand a password even with a
+  NOPASSWD rule (container-reproduced) — `bootstrap.sh` now tries `sudo -n true`
+  before the interactive `sudo -v`, and `01-sudo-nopasswd` / `desktop-setup.sh`
+  write the same two-line drop-in (`Defaults:<user> verifypw=any` + the rule),
+  byte-for-byte, so neither rewrites the other's file.
+
 ## 2026-08-18 — portal: pick the owner from the directory (#5)
 
 - **Add-user searches Entra as you type** (name / UPN / mail prefix; Graph
