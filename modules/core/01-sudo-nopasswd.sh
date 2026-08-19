@@ -6,7 +6,14 @@
 # Never install unvalidated content into /etc/sudoers.d — a syntax error
 # there disables sudo box-wide, so visudo -cf gates every write.
 user="$(id -un)"
-rule="$user ALL=(ALL) NOPASSWD:ALL"
+# verifypw=any: `sudo -v` must also be prompt-free. sudoers' default is
+# verifypw=all — every matching rule must be NOPASSWD — so a user who is ALSO
+# in the sudo group (stock desktop first user; DCV terminal owners) got a
+# password prompt from `sudo -v` (bootstrap's own check) despite this grant,
+# while plain `sudo cmd` worked. Same two lines as aws/scripts/desktop-setup.sh
+# writes at build, byte-for-byte, so the two never rewrite each other.
+rule="Defaults:$user verifypw=any
+$user ALL=(ALL) NOPASSWD:ALL"
 # sudo silently ignores sudoers.d file names containing a dot.
 target="/etc/sudoers.d/010-${user//./_}-nopasswd"
 
