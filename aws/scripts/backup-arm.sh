@@ -59,12 +59,15 @@ command -v restic >/dev/null || { apt-get update -y && apt-get install -y restic
 umask 077
 # Values are single-quoted: this file is SOURCED, and BACKUP_KEEP is a
 # multi-word flag string — unquoted, bash would try to run "7" as a command.
+# sq() makes an embedded ' safe inside those quotes ('\'' splice), so a
+# generated password containing one cannot break the file.
+sq() { printf '%s' "$1" | sed "s/'/'\\\\''/g"; }
 cat > /etc/asp-backup.env <<ENVEOF
-RESTIC_REPOSITORY='$REPO'
-RESTIC_PASSWORD='$RPASS'
-AWS_ACCESS_KEY_ID='$AKID'
-AWS_SECRET_ACCESS_KEY='$ASECRET'
-ASP_BACKUP_KEEP='$KEEP'
+RESTIC_REPOSITORY='$(sq "$REPO")'
+RESTIC_PASSWORD='$(sq "$RPASS")'
+AWS_ACCESS_KEY_ID='$(sq "$AKID")'
+AWS_SECRET_ACCESS_KEY='$(sq "$ASECRET")'
+ASP_BACKUP_KEEP='$(sq "$KEEP")'
 ENVEOF
 chmod 600 /etc/asp-backup.env
 
@@ -72,7 +75,8 @@ chmod 600 /etc/asp-backup.env
 cat > /etc/asp-backup.exclude <<'EXEOF'
 **/.cache
 **/.local/share/Trash
-**/snap
+**/snap/*/common/.cache
+**/snap/*/*/.cache
 **/.npm
 **/.cargo/registry
 **/.rustup
