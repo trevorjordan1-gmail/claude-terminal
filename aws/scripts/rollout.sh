@@ -51,6 +51,22 @@ while IFS=$'\t' read -r NAME PROFILE REGION BUCKET CPID PORTAL; do
     IDS=$(aws ec2 describe-instances --filters Name=tag:Role,Values=desktop Name=instance-state-name,Values=running \
       --query 'Reservations[].Instances[].InstanceId' --output text | tr '\t' ' ')
     for I in $IDS; do
+      # A box still provisioning is "running" from the moment it boots — 20 min
+      # before its setup finishes. Queueing the workbench there puts two apt
+      # consumers on one dpkg lock, and whichever loses is silently broken (#7,
+      # hit for real). Fresh + unfinished marker = mid-build: skip it.
+      BUSY=$(aws s3 cp "s3://$BUCKET/status/$I.json" - 2>/dev/null | python3 -c '
+import json, sys, time
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+if float(d.get("pct", 0)) < 100 and time.time() - float(d.get("ts", 0)) < 7200:
+    print("%s — %s%%" % (d.get("label", "?"), d.get("pct", "?")))')
+      if [ -n "$BUSY" ]; then
+        echo "   skipped $I: still provisioning ($BUSY) — rerun 'rollout.sh workbench' once it reports Ready"
+        continue
+      fi
       # shellcheck disable=SC2016  # JMESPath backticks, not shell expansion
       U=$(aws ec2 describe-instances --instance-ids "$I" --query 'Reservations[0].Instances[0].Tags[?Key==`LocalUser`]|[0].Value' --output text)
       aws ssm send-command --instance-ids "$I" --document-name AWS-RunShellScript --timeout-seconds 900 \

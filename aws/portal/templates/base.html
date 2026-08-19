@@ -7,7 +7,7 @@
 <title>{{ brand }}</title>
 <style>
   :root { --bg:#0f1420; --card:#1a2233; --text:#e8ecf4; --muted:#8b96ab;
-          --accent:#4f8ef7; --ok:#3fb68b; --warn:#e0a63f; --line:#2a3550; }
+          --accent:#4f8ef7; --ok:#3fb68b; --warn:#e0a63f; --bad:#e06060; --line:#2a3550; }
   * { box-sizing:border-box; margin:0; }
   body { background:var(--bg); color:var(--text);
          font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -32,6 +32,7 @@
   .state.stopped { color:var(--muted); }
   .state.paused { color:var(--accent); border-color:var(--accent); }
   .state.pending, .state.stopping { color:var(--warn); border-color:var(--warn); }
+  .state.failed { color:var(--bad); border-color:var(--bad); }
   button[disabled] { opacity:.45; cursor:default; }
   button, .btn { background:var(--accent); color:#fff; border:0; border-radius:7px;
            padding:.45rem .9rem; font-size:.85rem; cursor:pointer; text-decoration:none; }

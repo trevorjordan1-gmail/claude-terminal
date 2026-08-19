@@ -17,7 +17,15 @@ except Exception: print(0)')
   [ "${CONNS:-0}" -gt 0 ] && { echo "deferred: session in use"; exit 0; }
 fi
 echo "applying release $WANT (was $CUR)"
-aws s3 cp "s3://$ASP_BUCKET/scripts/desktop-setup.sh" /opt/asp/setup.sh && bash /opt/asp/setup.sh >> /var/log/asp-update.log 2>&1
+SETUP_OK=1
+aws s3 cp "s3://$ASP_BUCKET/scripts/desktop-setup.sh" /opt/asp/setup.sh && bash /opt/asp/setup.sh >> /var/log/asp-update.log 2>&1 || SETUP_OK=0
 su - "$ASP_LOCAL_USER" -c 'curl -fsSL https://raw.githubusercontent.com/trevorjordan1-gmail/claude-terminal/main/get.sh | bash' >> /var/log/asp-update.log 2>&1
-echo "$WANT" > /opt/asp/applied-version
-echo "applied $WANT"
+# desktop-setup exits 1 when a sub-step FATALed (#7). Don't stamp the release
+# then: the next daily run retries the same version, so a transient failure
+# (a dpkg lock, a CDN blip) heals on its own instead of waiting for a new tag.
+if [ "$SETUP_OK" = 1 ]; then
+  echo "$WANT" > /opt/asp/applied-version
+  echo "applied $WANT"
+else
+  echo "release $WANT: desktop-setup failed — not stamped, will retry on the next run (see /var/log/asp-update.log)"
+fi
