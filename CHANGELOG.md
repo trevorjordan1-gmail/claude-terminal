@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-18 — a failed build says so (#7)
+
+- **"Build failed" is a real state now.** `desktop-setup.sh` runs without `-e`
+  by design, so a FATAL in a chained sub-step (DCV install losing the dpkg
+  lock, the workbench producing no `claude`) used to end in "Ready 100%".
+  It now records the failed step, publishes the progress marker with a
+  `failed` key and exits 1; the portal keeps that marker live and renders
+  **Build failed (DCV)** — with the repair path in the card — instead of a
+  "Waking up…" that never resolves (once DCV answers, the marker is history).
+  `auto-update.sh` stamps a release only when setup succeeded, so the daily
+  run retries until it heals. 6 tests (31 total).
+- **`rollout.sh workbench` skips still-provisioning boxes** (fresh, unfinished
+  marker) and says so — a booting desktop is "running" 20 minutes before its
+  build ends, and queueing `get.sh` there put two apt consumers on one lock.
+
 ## 2026-08-18 — nightly backups (#6), broker re-link after hibernation + Chrome ToS (#8), Software Updater polkit + sudo -v (#10)
 
 - **Nightly restic backups for every DCV system (#6):** `aws/scripts/backup-arm.sh`
