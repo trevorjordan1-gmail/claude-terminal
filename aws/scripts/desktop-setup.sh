@@ -20,9 +20,20 @@ for u in $(echo "${ASP_ALL_USERS:-$ASP_LOCAL_USER}" | tr ',' ' '); do
   fi
 done
 # Passwordless sudo for the owner (workbench + in-session installs). Use the
-# exact filename claude-terminal's verify.sh checks for.
-echo "$ASP_LOCAL_USER ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/010-$ASP_LOCAL_USER-nopasswd"
+# exact filename AND content claude-terminal's 01-sudo-nopasswd writes, so the
+# kit's daily run says "already configured" instead of rewriting this file.
+# verifypw=any matters now that the owner is also in the sudo group (below):
+# sudoers' default verifypw=all makes `sudo -v` — bootstrap.sh's own check —
+# demand a password whenever ANY matching rule (%sudo's) lacks NOPASSWD.
+printf 'Defaults:%s verifypw=any\n%s ALL=(ALL) NOPASSWD:ALL\n' "$ASP_LOCAL_USER" "$ASP_LOCAL_USER" \
+  > "/etc/sudoers.d/010-$ASP_LOCAL_USER-nopasswd"
 chmod 440 "/etc/sudoers.d/010-$ASP_LOCAL_USER-nopasswd"
+# ...and the sudo GROUP, which is a different thing and the one polkit reads.
+# The sudoers drop-in above is invisible to polkit, so every desktop-admin rule
+# keyed on isInGroup("sudo") — ours and GNOME's own — silently excluded the very
+# user who already holds passwordless root. Owner only: collab guests get an
+# account, not privilege.
+usermod -aG sudo "$ASP_LOCAL_USER"
 # cloud AMI ships /etc/sudoers.d as 750; desktop ISO uses 755 — verify.sh
 # stats the rule as the user and needs directory traversal
 chmod 755 /etc/sudoers.d
