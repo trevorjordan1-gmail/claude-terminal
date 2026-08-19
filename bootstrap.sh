@@ -83,8 +83,12 @@ require_ubuntu_2404
 # Tools installed earlier in this same run must resolve immediately.
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:$PATH"
 
+# A NOPASSWD grant is enough (sudo -n); otherwise ask once. Not `sudo -v`
+# alone: with sudoers' default verifypw=all, a user who is also in the sudo
+# group gets a password prompt from -v even with a NOPASSWD rule — and the
+# DCV fleet re-runs this unattended, where a prompt is a hard failure.
 log "sudo is needed for apt operations — you may be prompted once."
-sudo -v || die "sudo access is required."
+sudo -n true 2>/dev/null || sudo -v || die "sudo access is required."
 
 # --medical is state, not a per-run switch: the marker persists so unattended
 # re-runs (the DCV updater passes no flags) keep the box medical.
