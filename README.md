@@ -164,7 +164,7 @@ keeps its install, and a forgotten one removes itself. Tune with
 | 02-home-dirs | creates the `~/Projects` workspace folder |
 | 05-node | Node.js 20 (NodeSource) + user-owned npm prefix `~/.npm-global` |
 | 08-medical-bedrock | *medical only, skips elsewhere:* pins Claude Code to Amazon Bedrock (managed settings + system env) and sweeps provider API keys off the box |
-| 10-claude-code | Claude Code native install + `cc` / `phonecc` aliases |
+| 10-claude-code | Claude Code native install + `cc` / `phonecc` aliases (menu-first `cc-launcher` on DCV; on an engagement terminal it offers `+ set up <code>.tools`, which runs the SETUP flow) |
 | 15-bun | Bun runtime (claude-mem's worker needs it) |
 | 20-claude-mem | [claude-mem](https://github.com/thedotmack/claude-mem) persistent memory (plugin, latest release) |
 | 21-medical-claude-mem | *medical only:* claude-mem on Bedrock via the CLI's aliases; telemetry + cloud sync off; credential strip |
