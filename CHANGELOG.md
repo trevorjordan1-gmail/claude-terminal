@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-19 — ASP_BRAND survives sourcing (#12)
+
+- The control-plane bootstrap template now single-quotes every
+  `/etc/asp-terminal.env` value (`'` spliced as `'\''`). A bare
+  `ASP_BRAND=Acme Terminals` was a prefix assignment to a missing command, so
+  the brand silently fell back to the default on every tenant with a real
+  brand — and would regress again on any control-plane rebuild. Rendered and
+  round-tripped with terraform; `idle-watchdog.py` tolerates quoted values.
+
 ## 2026-08-19 — static egress IP (#11)
 
 - **The NAT carries an Elastic IP** (`aws_eip.nat`), so the one address every
