@@ -94,6 +94,24 @@ resource "aws_instance" "nat" {
   tags                   = { Name = "asp-nat", Role = "nat" }
 }
 
+# The tenant's egress identity. Every terminal in the private subnets leaves
+# through this one address, so it is what a customer firewall, a DNS filter, a
+# vendor API allow-list or a conditional-access rule will be pinned to.
+#
+# Without it the NAT carries an auto-assigned public IPv4, which looks static
+# right up until the instance is stopped or replaced — and then every
+# allow-list built on it fails, quietly and everywhere at once.
+#
+# It is free to fix: AWS charges $0.005/hr for ALL in-use public IPv4,
+# auto-assigned or Elastic, so an attached EIP costs exactly what the random
+# address already cost. (An UNattached one costs the same again — release it
+# if this NAT is ever torn down.)
+resource "aws_eip" "nat" {
+  instance = aws_instance.nat.id
+  domain   = "vpc"
+  tags     = { Name = "asp-nat-egress" }
+}
+
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
   route {
