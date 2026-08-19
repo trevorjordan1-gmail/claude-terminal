@@ -23,6 +23,12 @@ done
 # exact filename claude-terminal's verify.sh checks for.
 echo "$ASP_LOCAL_USER ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/010-$ASP_LOCAL_USER-nopasswd"
 chmod 440 "/etc/sudoers.d/010-$ASP_LOCAL_USER-nopasswd"
+# ...and the sudo GROUP, which is a different thing and the one polkit reads.
+# The sudoers drop-in above is invisible to polkit, so every desktop-admin rule
+# keyed on isInGroup("sudo") — ours and GNOME's own — silently excluded the very
+# user who already holds passwordless root. Owner only: collab guests get an
+# account, not privilege.
+usermod -aG sudo "$ASP_LOCAL_USER"
 # cloud AMI ships /etc/sudoers.d as 750; desktop ISO uses 755 — verify.sh
 # stats the rule as the user and needs directory traversal
 chmod 755 /etc/sudoers.d
