@@ -5,6 +5,12 @@ The engineer points you here ("read ~/claude-terminal/templates/SETUP.md and set
 up") after the bootstrap has run and the filled scratch template has been staged. Everything
 you need is in the staged file — do not ask for keys or the client code.
 
+> On an engagement terminal (a build box or a customer deployment — the box carries its
+> engagement code in `/etc/asp-terminal.env`), `cc` leads with **`+ set up <code>.tools`**
+> while no such workspace exists; picking it starts exactly this run, in `~/Projects`, with
+> the box's code passed along as a cross-check against the pack's `CLIENT_CODE`. Same flow,
+> nothing extra to type.
+
 ## Preconditions (verify, don't assume)
 
 1. `~/claude-terminal/` exists AND is current: run `cd ~/claude-terminal && git pull --ff-only`
