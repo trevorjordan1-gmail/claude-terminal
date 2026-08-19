@@ -294,6 +294,12 @@ systemctl daemon-reload
 systemctl enable --now asp-auto-update.timer
 
 
+# ---- keep the broker link alive across hibernation ----
+if aws s3 cp "s3://$ASP_BUCKET/scripts/dcv-relink.sh" /opt/asp/dcv-relink.sh >/dev/null 2>&1; then
+  chmod +x /opt/asp/dcv-relink.sh
+  bash /opt/asp/dcv-relink.sh || echo "WARN: dcv-relink.sh failed" >&2
+fi
+
 # ---- tenant extension hook (issue #1): sanctioned per-tenant customization ----
 # If the tenant bucket carries scripts/tenant-custom.sh, run it LAST. Contract: the
 # operator owns the file, it is idempotent (re-runs on every release), failure
