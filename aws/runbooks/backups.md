@@ -59,6 +59,31 @@ Bucket hygiene: block all public access, default encryption on, and **no
 versioning** — restic keeps its own history and `forget --prune` must be able
 to delete, so versioning only accumulates cost.
 
+### Retention vs. minimum storage duration
+
+Set `BACKUP_KEEP` to match the **minimum storage duration the bucket bills**,
+or pruning costs money and buys nothing.
+
+Object stores that advertise no egress fees typically charge a minimum
+retention instead: Wasabi bills pay-as-you-go objects for 90 days (30 on
+reserved capacity) and applies a "Timed Deleted Storage" charge for the
+remaining days when you delete sooner. The shipped default
+(`--keep-daily 7 --keep-weekly 4 --keep-monthly 6`) makes `forget --prune`
+repack and delete continuously, so on such a bucket **every prune bills for
+storage we no longer have** — the worst of both: paying for the data and not
+having it.
+
+Where a minimum applies, keep at least that long — the storage is already paid
+for, so the extra history is effectively free:
+
+```
+BACKUP_KEEP = --keep-daily 90 --keep-monthly 12    # 90-day minimum bucket
+BACKUP_KEEP = --keep-daily 7 --keep-weekly 4 --keep-monthly 6   # plain S3
+```
+
+Restic deduplicates, so 90 dailies of a home directory that mostly sits still
+cost far less than 90× the first snapshot.
+
 New terminals arm themselves at build. To arm boxes that predate the config:
 
 ```
