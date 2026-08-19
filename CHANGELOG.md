@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-19 — static egress IP (#11)
+
+- **The NAT carries an Elastic IP** (`aws_eip.nat`), so the one address every
+  terminal egresses through — the thing customer firewalls, DNS filters, vendor
+  allow-lists and conditional access get pinned to — survives the NAT being
+  stopped or replaced. Costs what the auto-assigned address already cost. New
+  `terraform output egress_ip`; runbook covers the one-time change on adoption
+  (`terraform import aws_eip.nat <allocation-id>` to adopt a hand-allocated
+  one) and a §9.5 note from #8: a paused terminal only converges on the wake
+  *after* a rollout, so wake-path fixes need one cycle per paused box.
+
 ## 2026-08-18 — cc-launcher can stand up `<code>.tools` (#9)
 
 - On a terminal that carries an engagement code (`ASP_BACKUP_CLIENT` in
