@@ -225,7 +225,12 @@ def provision_status(instance_id: str) -> dict | None:
     A finished (pct>=100) or old marker is history, not status: auto-update
     re-runs republish markers long after first boot, and showing "Ready 100%"
     next to a "Getting ready…" badge on a later boot reads as a contradiction
-    (TJ hit exactly this)."""
+    (TJ hit exactly this).
+
+    The exception is a marker carrying "failed" (#7): desktop-setup.sh writes
+    one when a sub-step FATALed (DCV, workbench). That is the build's real
+    terminal state until a later run overwrites it, so it stays live past both
+    cut-offs — the caller decides what a live port means for it."""
     import json as _json
     import time as _time
     try:
@@ -233,6 +238,10 @@ def provision_status(instance_id: str) -> dict | None:
                              Key=f"status/{instance_id}.json")
         d = _json.loads(obj["Body"].read())
         elapsed_min = max(0.0, (_time.time() - float(d.get("ts", 0))) / 60)
+        if d.get("failed"):
+            d["failed"] = str(d["failed"])
+            d["eta_left"] = 0
+            return d
         if float(d.get("pct", 0)) >= 100 or elapsed_min > 120:
             return None
         d["eta_left"] = max(0, round(float(d.get("eta_min", 0)) - elapsed_min))

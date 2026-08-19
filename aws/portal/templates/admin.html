@@ -97,7 +97,9 @@ First boot takes ~15–25 minutes.</p>
     <div class="sub">{{ m.type }} · {{ m.owner }} · linux user: {{ m.local_user }}</div>
   </div>
   <span class="state {{ m.css }}">{{ m.label }}</span>
-  {% if m.css == "pending" and m.progress %}
+  {% if m.css == "failed" %}
+  <div class="sub" style="width:100%">Setup hit an error ({{ m.progress.failed }}) and this terminal is not usable yet. It retries automatically at the next update check; an admin can re-run setup now — details are in <code>/var/log/asp-setup.log</code> on the box.</div>
+  {% elif m.css == "pending" and m.progress %}
   <div class="prog"><div class="prog-fill" style="width:{{ m.progress.pct }}%"></div></div>
   <div class="sub" style="width:100%">{{ m.progress.label }} — {{ m.progress.pct }}%{% if m.progress.eta_left and m.progress.pct < 100 %}, about {{ m.progress.eta_left }} min left{% endif %}</div>
   {% elif m.css == "pending" and m.state == "running" %}
@@ -106,7 +108,7 @@ First boot takes ~15–25 minutes.</p>
   {% if m.css in ("paused", "stopped") %}
     <form class="inline" method="post" action="/machines/{{ m.id }}/start">
       <button class="ghost">{{ m.css == "paused" and "Resume" or "Start" }}</button></form>
-  {% elif m.css == "running" %}
+  {% elif m.css in ("running", "failed") %}
     <form class="inline" method="post" action="/machines/{{ m.id }}/pause"><button class="ghost">Pause</button></form>
     <form class="inline" method="post" action="/machines/{{ m.id }}/stop"
           onsubmit="return confirm('Turn off {{ m.name }}? Running programs will close.')">

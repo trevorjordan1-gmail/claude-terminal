@@ -11,6 +11,25 @@ export DEBIAN_FRONTEND=noninteractive
 # shellcheck source=/dev/null  # progress helper written by user_data at boot
 if [ -f /opt/asp/progress.sh ]; then . /opt/asp/progress.sh; else prog() { :; }; fi
 
+# Sub-steps that FATALed. This script runs without -e on purpose (a broken
+# extra must not abort the rest), so a chained installer's exit 1 used to
+# vanish and the last word was still "Ready 100%" — a portal-visible lie the
+# operator only saw at the bottom of asp-setup.log (#7). Anything recorded
+# here turns the final marker into "Build failed (…)" and the exit code into 1.
+BUILD_FAILED=""
+build_failed() { BUILD_FAILED="${BUILD_FAILED:+$BUILD_FAILED, }$1"; echo "BUILD FAILED: $1" >&2; }
+# The portal reads a "failed" key the stock prog() cannot write; publish the
+# same marker shape plus that key. No progress.sh = no marker channel = no-op.
+prog_failed() {
+  [ -f /opt/asp/progress.sh ] || return 0
+  local tok iid
+  tok=$(curl -s --connect-timeout 2 -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null)
+  iid=$(curl -s --connect-timeout 2 -H "X-aws-ec2-metadata-token: $tok" http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
+  printf '{"pct": 100, "label": "Build failed (%s)", "eta_min": 0, "ts": %s, "failed": "%s"}' \
+    "$1" "$(date +%s)" "$1" > /opt/asp/progress.json
+  [ -n "$iid" ] && aws s3 cp /opt/asp/progress.json "s3://$ASP_BUCKET/status/$iid.json" --quiet || true
+}
+
 # ---- 1. local users (no passwords — DCV auth is broker tokens only) ----
 # The owner gets sudo; every other tenant user exists too, because DCV session
 # permissions only apply to existing OS users (collab guests connect as them).
@@ -277,7 +296,7 @@ if [ -x "/home/$ASP_LOCAL_USER/.local/bin/claude" ]; then
   su - "$ASP_LOCAL_USER" -c 'cd ~/claude-terminal && bash verify.sh' >> /var/log/asp-workbench.log 2>&1 || true
 else
   prog 70 "WORKBENCH FAILED - claude missing, see /var/log/asp-workbench.log" 6
-  echo "ERROR: workbench did not produce a working claude binary" >&2
+  build_failed "workbench"
 fi
 
 prog 80 "Installing remote display (DCV)" 4
@@ -293,7 +312,7 @@ chown "$ASP_LOCAL_USER:$ASP_LOCAL_USER" "/home/$ASP_LOCAL_USER/.bashrc"
 if aws s3 ls "s3://$ASP_BUCKET/scripts/dcv-desktop-install.sh" >/dev/null 2>&1; then
   aws s3 cp "s3://$ASP_BUCKET/scripts/dcv-desktop-install.sh" /opt/asp/dcv-desktop-install.sh
   chmod +x /opt/asp/dcv-desktop-install.sh
-  /opt/asp/dcv-desktop-install.sh
+  /opt/asp/dcv-desktop-install.sh || build_failed "DCV"
 else
   echo "dcv-desktop-install.sh not in bucket yet — base image only"
 fi
@@ -366,5 +385,10 @@ if aws s3 cp "s3://$ASP_BUCKET/scripts/tenant-custom.sh" "/opt/asp/tenant-custom
   fi
 fi
 
+if [ -n "$BUILD_FAILED" ]; then
+  prog_failed "$BUILD_FAILED"
+  echo "desktop-setup FAILED: $BUILD_FAILED — see /var/log/asp-setup.log; re-running this script repairs it (the daily updater retries too)" >&2
+  exit 1
+fi
 prog 100 "Ready" 0
 echo "desktop-setup complete"

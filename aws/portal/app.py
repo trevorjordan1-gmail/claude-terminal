@@ -279,7 +279,9 @@ def _annotate_machines(machines: list[dict]) -> None:
     AVAILABLE (session placement works — this lags the port by ~30–90 s).
     Ladder: "Getting ready…"+bar (true first-boot provisioning, fresh marker)
     → "Waking up…" (port down) → "Almost ready…" (port up, broker syncing)
-    → Running."""
+    → Running. A marker flagged "failed" with the port down is "Build failed"
+    (#7) — the build's honest end state, not a wake that never finishes; if
+    the port answers, someone repaired it by hand and the marker is history."""
     for m in machines:
         m["label"], m["css"] = _display_state(m)
     avail = _broker_available_hosts()
@@ -293,6 +295,12 @@ def _annotate_machines(machines: list[dict]) -> None:
         if ok and in_broker:
             continue  # truly Running
         progress = aws_ec2.provision_status(m["id"]) if not in_broker else None
+        if progress and progress.get("failed"):
+            if not ok:
+                m["label"], m["css"] = "Build failed", "failed"
+                m["progress"] = progress
+                continue
+            progress = None  # DCV answers: repaired since; fall through
         if progress:
             m["label"], m["css"] = "Getting ready…", "pending"
             m["progress"] = progress
