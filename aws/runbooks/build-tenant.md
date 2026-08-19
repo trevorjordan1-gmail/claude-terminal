@@ -177,6 +177,8 @@ curl -s http://127.0.0.1:8080/healthz  # [{"ok":true,...}]
 curl -s https://portal.<dns_zone>/healthz          # valid LE cert + {"ok":true}
 openssl s_client -connect gw.<dns_zone>:8443 </dev/null | openssl x509 -noout -issuer  # [Let's Encrypt]
 # external scan: ONLY 443 + 8443 open on the EIP; desktops unreachable; no port 22 anywhere
+# from inside any terminal: egress is the NAT's Elastic IP (terraform output egress_ip) — static, allow-listable
+curl -s https://checkip.amazonaws.com                 # [== terraform output egress_ip]
 ```
 Then disable sshd fleet-wide: `systemctl disable --now ssh && systemctl mask ssh` (via SSM).
 
@@ -206,6 +208,15 @@ born current (boot pulls latest from the tenant bucket).
 | **`aws/scripts/`** (desktop/DCV layer, watchdog) | commit → `aws s3 sync scripts/` to the tenant artifacts bucket → SSM re-run the touched script on affected instances |
 | **Portal** | commit → zip → `s3 cp portal.zip` → SSM `portal-deploy.sh` on the control plane |
 | **Infra** (Terraform) | `terraform apply` per tenant |
+
+**Paused terminals converge on their *next* wake — after it, not before.** A
+hibernated box gets a release via `auto-update.sh` → `desktop-setup.sh` on
+its next boot, apt work included, so the wake that installs a fix is still a
+wake without it. For anything that fixes the wake path itself (the #8 broker
+re-link is the example — a box paused since before the rollout hit the same
+dead link on resume, 13.8 h silent), either accept one bad wake per paused
+box or proactively start the paused fleet, let the updater run, and pause
+again. "Merged + synced" is not "protected" until each box has cycled once.
 
 Multi-tenant discipline (when client #1 lands): tag releases in this repo;
 roll out per tenant = sync-at-tag + SSM re-run; record each tenant's running
@@ -258,6 +269,15 @@ change that spans both ships as one commit — no cross-repo contract dance.
    (silent: `msiexec /i nice-dcv-client-Release.msi /qn`).
 3. **Client firewall**: outbound TCP 8443 required, UDP 8443 preferred (QUIC;
    auto-falls back to TCP).
+4. **Egress allow-lists** — anything the customer pins to "the terminals'
+   address" (their firewall, vendor APIs, conditional access) gets
+   `terraform output egress_ip`: the NAT's **Elastic IP**, which survives the
+   NAT being stopped or replaced (#11). On a tenant built before the EIP
+   existed the address changes **once** on the apply that adds it — if the
+   operator hand-allocated one already, `terraform import aws_eip.nat
+   <allocation-id>` first so it is adopted rather than replaced. An attached
+   EIP costs what the auto-assigned address already cost; release it if the
+   NAT is ever torn down (unattached ones bill the same).
 
 Then: `https://portal.<dns_zone>` → Entra login → Connect.
 
