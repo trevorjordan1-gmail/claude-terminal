@@ -11,7 +11,7 @@ def test_profile_defaults_to_standard():
 
 
 def test_terminal_env_carries_profile_default():
-    env = aws_ec2._terminal_env("alice", "alice@example.com")
+    env = aws_ec2._terminal_env("alice", "alice@example.com", "acme-cct01", "acme")
     assert "ASP_PROFILE=standard" in env.splitlines()
     assert "ASP_LOCAL_USER=alice" in env.splitlines()
     assert "ASP_OWNER_UPN=alice@example.com" in env.splitlines()
@@ -19,7 +19,7 @@ def test_terminal_env_carries_profile_default():
 
 def test_terminal_env_carries_medical(monkeypatch):
     monkeypatch.setattr(config, "PROFILE", "medical")
-    assert "ASP_PROFILE=medical" in aws_ec2._terminal_env("bob", "bob@example.com").splitlines()
+    assert "ASP_PROFILE=medical" in aws_ec2._terminal_env("bob", "bob@example.com", "acme-cct01", "acme").splitlines()
 
 
 def test_default_permissions_standard():

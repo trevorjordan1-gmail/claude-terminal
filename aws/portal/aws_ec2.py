@@ -103,15 +103,22 @@ def valid_local_user(name: str) -> bool:
     return bool(re.fullmatch(r"[a-z][a-z0-9-]{1,30}", name))
 
 
-def _terminal_env(local_user: str, owner_upn: str) -> str:
+def _terminal_env(local_user: str, owner_upn: str, name: str,
+                  backup_client: str) -> str:
     """The /etc/asp-terminal.env every terminal boots with — one place, so the
-    tenant profile (medical or standard) reaches every kind of desktop."""
+    tenant profile (medical or standard) reaches every kind of desktop.
+
+    ASP_MACHINE_NAME / ASP_BACKUP_CLIENT exist because the box cannot see its
+    own tags (the desktop role has no ec2:DescribeTags, and the hostname is the
+    private IP). They are what puts a backup in <client>/<machine>."""
     return "\n".join([
         f"ASP_BROKER_HOST={config.BROKER_SHORT_HOST}",
         f"ASP_LOCAL_USER={local_user}",
         f"ASP_OWNER_UPN={owner_upn}",
         f"ASP_ALL_USERS={local_user}",  # collab guests are added at share time
         f"ASP_CUSTOMER={config.CUSTOMER}",
+        f"ASP_MACHINE_NAME={name}",
+        f"ASP_BACKUP_CLIENT={backup_client}",
         f"ASP_REGION={config.REGION}",
         f"ASP_BUCKET={config.ARTIFACTS_BUCKET}",
         f"ASP_PROFILE={config.PROFILE}",
@@ -140,7 +147,7 @@ def provision_build_box(build_for: str, creator_upn: str, owner_group: str) -> s
     derive one from, and everyone shares the one session by design."""
     name = next_build_name(build_for)
     local = "build"
-    env = _terminal_env(local, creator_upn)
+    env = _terminal_env(local, creator_upn, name, build_for)
     user_data = BOOTSTRAP.format(env=env, bucket=config.ARTIFACTS_BUCKET)
     tags = [
         {"Key": "Name", "Value": name},
@@ -177,7 +184,7 @@ def next_cct_name() -> str:
 
 def provision(owner_upn: str, local_user: str) -> str:
     name = next_cct_name()
-    env = _terminal_env(local_user, owner_upn)
+    env = _terminal_env(local_user, owner_upn, name, config.CLIENT_CODE)
     user_data = BOOTSTRAP.format(env=env, bucket=config.ARTIFACTS_BUCKET)
     tags = [
         {"Key": "Name", "Value": name},
