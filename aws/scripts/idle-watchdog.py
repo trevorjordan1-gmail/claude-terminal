@@ -23,11 +23,23 @@ import time
 
 import boto3
 
-ENV = dict(
-    line.strip().split("=", 1)
-    for line in open("/etc/asp-terminal.env")
-    if "=" in line and not line.startswith("#")
-)
+def _unquote(v: str) -> str:
+    """Tolerate a shell-quoted value ('x' / "x") — the control-plane env is
+    written quoted so it is safe to source (#12); desktops may follow."""
+    v = v.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+        v = v[1:-1]
+    return v
+
+
+ENV = {
+    k.strip(): _unquote(v)
+    for k, v in (
+        line.strip().split("=", 1)
+        for line in open("/etc/asp-terminal.env")
+        if "=" in line and not line.startswith("#")
+    )
+}
 REGION = ENV["ASP_REGION"]
 CUSTOMER = ENV["ASP_CUSTOMER"]
 BUCKET = ENV["ASP_BUCKET"]

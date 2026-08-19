@@ -14,9 +14,14 @@ if ! command -v aws >/dev/null; then
 fi
 
 mkdir -p /opt/asp
+# Every consumer of this file `source`s it, so each value is single-quoted
+# (with any ' spliced as '\'') — a multi-word ASP_BRAND written bare was a
+# prefix assignment to a command that doesn't exist, and the brand silently
+# fell back to the default (#12). Single quotes also keep $ and backticks
+# literal. The kit's asp_env() strips the quotes when it reads this file.
 cat > /etc/asp-terminal.env <<'ENVEOF'
 %{ for k, v in env ~}
-${k}=${v}
+${k}='${replace(v, "'", "'\\''")}'
 %{ endfor ~}
 ENVEOF
 
