@@ -18,6 +18,11 @@ output "controlplane_public_ip" {
   value = aws_eip.controlplane.public_ip
 }
 
+output "egress_ip" {
+  description = "The tenant's static egress address: every terminal leaves through the NAT's Elastic IP. Hand this to the customer for firewall / DNS-filter / vendor API / conditional-access allow-lists — it survives NAT stop/replace (#11)"
+  value       = aws_eip.nat.public_ip
+}
+
 output "controlplane_instance_id" {
   value = aws_instance.controlplane.id
 }
