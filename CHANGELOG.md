@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-18 — cc-launcher can stand up `<code>.tools` (#9)
+
+- On a terminal that carries an engagement code (`ASP_BACKUP_CLIENT` in
+  `/etc/asp-terminal.env` — build boxes and customer deployments) with no
+  `<code>.tools` yet, `cc` leads with **`+ set up <code>.tools`**. Picking it
+  runs the real SETUP flow (`templates/SETUP.md`) in `~/Projects` with the
+  box's code passed as a cross-check against the pack's `CLIENT_CODE` —
+  never a bare `mkdir`. No staged pack → it says what the pack is and where
+  it goes. Terminals without a code get a one-line note on what creates a
+  workspace. Container-tested; the entry disappears once the workspace exists.
+
 ## 2026-08-18 — a failed build says so (#7)
 
 - **"Build failed" is a real state now.** `desktop-setup.sh` runs without `-e`
