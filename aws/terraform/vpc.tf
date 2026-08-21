@@ -112,6 +112,25 @@ resource "aws_eip" "nat" {
   tags     = { Name = "asp-nat-egress" }
 }
 
+# S3 without a bandwidth bill. Terminals live in private subnets, so every
+# script download, status marker and backup upload otherwise egresses through
+# the NAT instance — and about half of it crosses an AZ boundary on the way
+# ($0.01/GB each direction). Same-region S3 transfer is free; it is the PATH
+# that costs. A gateway endpoint keeps the traffic inside the VPC.
+#
+# Gateway endpoints are free: no hourly charge and no per-GB charge (unlike
+# interface endpoints). There is no reason for a tenant not to have this.
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids = [
+    aws_route_table.private.id,
+    aws_route_table.public.id,
+  ]
+  tags = { Name = "asp-s3" }
+}
+
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
   route {
