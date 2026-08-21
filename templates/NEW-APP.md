@@ -4,6 +4,10 @@
 that does X" — this is how X is born. The status page was built exactly this way; every
 app after it follows the same nine moves. Nothing here needs a human except the idea.
 
+**If the app already exists elsewhere** — an existing product shipped as an image from a private
+registry, rather than something born here — use `PRODUCT-APP.md` instead. Same platform, different
+nine moves: you are stripping a vendor's deployment assumptions out rather than creating a repo.
+
 **The law: folder name == repo name == subdomain.** Pick `<app>` short and lowercase →
 `<app>.<CLIENT_DOMAIN>/` here, `<GITHUB_ORG>/<app>.<CLIENT_DOMAIN>` on GitHub, live at
 `https://<app>.<CLIENT_DOMAIN>`.
