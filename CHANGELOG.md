@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-21 — cost controls (#14)
+
+- **S3 gateway endpoint** in every tenant VPC (`aws_vpc_endpoint.s3`, both
+  route tables): script downloads, status markers and nightly backups no
+  longer transit the NAT or cross AZs on the way to same-region S3. Gateway
+  endpoints carry no hourly and no per-GB charge.
+- **Per-tenant spending limit** (`aws/scripts/budget-set.sh`, dormant without
+  `/asp/budget/config`): sized as the larger of the tenant's own worst
+  complete month and a measured rate-card model × the terminals that exist,
+  plus headroom — both sizing query and budget scoped to the platform's
+  region (unscoped, the numbers are fiction). Alerts at 80/100% actual and
+  120% forecast; deliberately no automatic shutdown — enforcement, if wanted,
+  belongs on `ec2:RunInstances` (runbook `aws/runbooks/budgets.md`, incl.
+  what to check when it fires).
+
 ## 2026-08-19 — ASP_BRAND survives sourcing (#12)
 
 - The control-plane bootstrap template now single-quotes every
