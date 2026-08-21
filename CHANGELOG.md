@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-21 — PRODUCT-APP template (#15)
+
+- **`templates/PRODUCT-APP.md`**: how an existing product — one image from a
+  private registry serving many clients — lands on an already-built platform.
+  Sibling of NEW-APP (nine moves), each move a correction from a live run:
+  delete the vendor's bundled Postgres (`db-add.sh` instead), publish no
+  ports, pin exact tags (no auto-update where images self-migrate), snapshot
+  before migrating releases, one app per front door (never Access in front of
+  a bearer-token endpoint), registry credential in the app's droplet `.env`
+  vs vendor-facing credentials terminal-local and per-command, parameterise
+  vendor health monitors, check silent egress defaults, verify the *running*
+  version. NEW-APP.md and the stamped platform CLAUDE.md both point at it.
+
 ## 2026-08-21 — aiops mailbox gated on capability (#13)
 
 - SETUP step 6 no longer runs unconditionally: the pack's `MAIL_CAPABILITY`
