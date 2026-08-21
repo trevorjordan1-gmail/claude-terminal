@@ -50,6 +50,14 @@ for v in CLIENT_LOCATION CLIENT_STAFF_DOMAIN CLIENT_ALERT_EMAILS ADNET_ALERTS_MA
          AIOPS_UPN; do
   [ -n "${!v:-}" ] || echo "  (note: $v empty — the platform build will need a judgment call or fallback)"
 done
+# MAIL_CAPABILITY gates SETUP step 6 (#13): outbound = platform mails users;
+# inbound = a machine must receive time-limited mail (e.g. Team admin-export
+# links); none = no aiops identity gets provisioned, recorded in STATE.md.
+# Absent → SETUP asks the engineer the one capability question.
+case "${MAIL_CAPABILITY:-}" in
+  ""|outbound|inbound|both|none) : ;;
+  *) bad "MAIL_CAPABILITY must be outbound/inbound/both/none" "${MAIL_CAPABILITY}"; MISS=1 ;;
+esac
 # GITHUB_CLASSIC = classic PAT, read:packages ONLY — ghcr.io refuses fine-grained PATs;
 # without it every deploy takes the build-on-droplet fallback instead of the CI image.
 [ "$MISS" -eq 0 ] && ok "pack lints clean ($ENVFILE: ${#REQUIRED[@]} names, sources cleanly)"

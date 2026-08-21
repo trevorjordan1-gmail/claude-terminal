@@ -67,8 +67,29 @@ Then, in order:
    `RESTIC_PASSWORD_CCT` (the Cloudflare lesson: a token can succeed on GET while holding
    no write permission at all). It cleans up its own probe objects and its output is
    paste-ready for STATE.md's verified table. Investigate any FAIL before continuing.
-6. **aiops mail — the terminal's email channel** (users mail the terminal at
-   `aiops@<client mail domain>`; the terminal mails them back):
+6. **aiops mail — a MACHINE mailbox, provisioned only when something needs one**
+   (`aiops@<client mail domain>`):
+   - **Gate first — on capability, never on engagement type (#13).** The question:
+     *does anything in THIS engagement need a mailbox that is not a person's?*
+     The two known reasons point in opposite directions, which is why the service
+     line alone cannot answer it:
+       - **outbound** — a built platform mails its users and they mail it back;
+         the sender identity must outlive the engineer. Every platform build: yes.
+       - **inbound** — a machine must *receive* time-limited mail and act on it
+         unattended (the standing example: ingestion that depends on the Claude
+         Team admin data export, which arrives only as a 24-hour link to a
+         mailbox — there is no API to poll instead).
+     The pack answers via `MAIL_CAPABILITY` = `outbound` / `inbound` / `both` /
+     `none`. If the pack does not carry it, ask the engineer exactly this one
+     question, naming both reasons — the single sanctioned exception to "ask the
+     engineer nothing" — and record their answer.
+   - **If the answer is `none`: skip the rest of this step and RECORD the skip**
+     in STATE.md's verified table — "aiops mail: not provisioned (no
+     machine-mailbox capability in this engagement)". A recorded skip is the
+     point: a blank row is indistinguishable from an oversight later, and an
+     unused machine identity in a customer tenant is a standing account, a
+     consented Mail.\* registration and a shared TOTP with no consumer.
+   - Otherwise, provision as before:
    - If `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` are in the pack: run
      `scripts/aiops-mail.sh login` and RELAY the printed device code to the engineer — they
      sign in **AS the aiops account** (creds + TOTP from Hudu; the tool refuses and drops

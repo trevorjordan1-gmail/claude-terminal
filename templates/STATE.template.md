@@ -35,7 +35,7 @@ blocked on whom.}}
 |---|---|
 | `scripts/workspace-status.sh` | {{clean / findings}} |
 | Credential pack (writes probed) | {{n/n providers}} |
-| aiops mail (`aiops-mail.sh verify` round trip) | {{PASS / pending ENTRA_*}} |
+| aiops mail (`aiops-mail.sh verify` round trip) | {{PASS / pending ENTRA_* / not provisioned — no machine-mailbox capability (MAIL_CAPABILITY=none, {{who decided, date}})}} |
 | {{platform-verify.sh once stage 4 runs — port scan, isolation, silent-alarm, restore drill}} | |
 
 ## Live components
