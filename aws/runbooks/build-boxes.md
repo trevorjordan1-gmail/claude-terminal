@@ -43,6 +43,7 @@ drives.
 | Decision | Platform build (Ai Build) | Analysis/adoption (Ai Adopt) |
 |---|---|---|
 | Credential set | full pack + aiops identity | only the access the engagement grants |
+| Machine mailbox (aiops) | yes — outbound capability is inherent to a platform | **by capability, not service line** (#13): `MAIL_CAPABILITY` in the pack / SETUP's one question. Inbound ingestion (e.g. Team admin-export links) is a valid reason; "analysis" alone is not |
 | Backups | nightly restic → the client's storage bucket (SETUP join-mode) | operator bucket, or explicitly skip (git + vault are the durable stores) |
 
 **Lifecycle.** Hibernate-by-default via the idle watchdog (defaults as
