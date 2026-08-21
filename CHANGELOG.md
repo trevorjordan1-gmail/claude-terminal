@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-21 — aiops mailbox gated on capability (#13)
+
+- SETUP step 6 no longer runs unconditionally: the pack's `MAIL_CAPABILITY`
+  (`outbound` / `inbound` / `both` / `none`) decides whether the machine
+  mailbox is provisioned — outbound for platforms that mail their users,
+  inbound for unattended ingestion of time-limited mail (Claude Team
+  admin-export links). Absent → SETUP asks the engineer that one question,
+  both reasons named. `none` → the skip is recorded in STATE.md, never
+  silent. `pack-verify.sh` validates the value; build-boxes runbook table
+  points at the gate. Capability, not service line — an adoption engagement
+  can need mail for the opposite reason a build does.
+
 ## 2026-08-21 — cost controls (#14)
 
 - **S3 gateway endpoint** in every tenant VPC (`aws_vpc_endpoint.s3`, both
