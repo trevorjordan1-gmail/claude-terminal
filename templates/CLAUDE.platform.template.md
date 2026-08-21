@@ -107,6 +107,9 @@ git diff --cached | grep -qE "$pat" && { echo "ABORT: live secret in staged diff
 - New app? Follow `~/claude-terminal/templates/NEW-APP.md` — repo in {{GITHUB_ORG}}, CI from
   day one, container on docker01, tunnel hostname + Access, backup hook, Healthchecks check,
   STATE.md entry. Folder name == repo name == subdomain, always.
+- Deploying an app that already exists elsewhere (a product image from a private registry)?
+  That is `~/claude-terminal/templates/PRODUCT-APP.md` — read the product's docs for what it
+  *is*; take how it deploys from there, not from the vendor's own instructions.
 - **Email, as the program's own address:** `scripts/aiops-mail.sh` sends and reads mail as
   the client's `aiops@` mailbox (`send` / `list` / `read` / `verify` — `help` for all).
   Users mail work to the terminal; you mail results back. Discipline: you are writing as
