@@ -124,7 +124,8 @@ changes shape:
   contract: the box hibernates, plain cron silently skips). If the platform build hasn't run yet,
   record that in STATE.md instead — the build will arm it.
 - **Register the terminal:** STATE.md's VM↔builder map gains this machine (hostname,
-  builder, token names + expiries). Commit + push.
+  builder, token names + minted date — expiry = mint + 12 months, the operator
+  standard). Commit + push.
 - `pack-verify.sh` runs the same — it proves the NEW tokens, not the first terminal's.
 - **aiops mail is per-terminal too:** the token cache never travels — run
   `scripts/aiops-mail.sh login` + `verify` on THIS machine (step 6 above, same relay).

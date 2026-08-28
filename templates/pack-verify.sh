@@ -41,10 +41,13 @@ done
 case "$GITHUB_ORG" in
   *" "*|*,*) bad "GITHUB_ORG must be the URL slug (after github.com/), not a display name" "$GITHUB_ORG"; MISS=1 ;;
 esac
-for v in DO_TOKEN_EXPIRES CF_TOKEN_ID CF_TOKEN_EXPIRES GITHUB_PAT_EXPIRES \
-         GITHUB_CLASSIC_EXPIRES ENTRA_SECRET_EXPIRES; do
-  [ -n "${!v:-}" ] || echo "  (note: $v empty — expiry/ID is only on screen at mint time)"
-done
+# Per-credential *_EXPIRES fields are gone (#17): the operating standard is ONE
+# lifetime for every mintable credential (12 months — CF, DO, both GitHub PATs,
+# the Entra secret), so every expiry is "≈ the engagement anniversary" by
+# construction. One optional date carries the whole convention; CF_TOKEN_ID
+# stays because it is a revocation identifier, not bookkeeping.
+[ -n "${CREDENTIALS_MINTED:-}" ] || echo "  (note: CREDENTIALS_MINTED empty — one date, set at the accounts pass; every mintable credential expires ≈ +12 months from it)"
+[ -n "${CF_TOKEN_ID:-}" ] || echo "  (note: CF_TOKEN_ID empty — the revocation identifier; only on screen at mint time)"
 for v in CLIENT_LOCATION CLIENT_STAFF_DOMAIN CLIENT_ALERT_EMAILS ADNET_ALERTS_MAILBOX \
          TEAM_DOMAIN ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_CLIENT_SECRET GITHUB_CLASSIC \
          AIOPS_UPN; do

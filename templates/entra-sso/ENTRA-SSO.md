@@ -58,7 +58,9 @@ call or one-time link, never plain email).
 ## Step 2 — Claude wires everything else
 
 1. Values → the workspace `.env` (`ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`,
-   `ENTRA_CLIENT_SECRET`, `ENTRA_SECRET_EXPIRES`) + expiry → STATE.md's credential table.
+   `ENTRA_CLIENT_SECRET`). The secret follows the 12-month standard
+   (`New-ClientSSO.ps1`'s default), so STATE.md's minted-date convention covers its
+   expiry — no per-credential field (#17).
 2. **Cloudflare:** add the Entra ID login method to Zero Trust via the API (tenant ID +
    client ID + secret), then flip each Access application's policy to the
    **engineer-ratified default: allow `@CLIENT_STAFF_DOMAIN` + `@<tenant>.onmicrosoft.com`

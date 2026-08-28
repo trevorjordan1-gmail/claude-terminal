@@ -21,7 +21,8 @@ archives as files (scp) and never `docker exec -i` inside a piped script.
 ## 1 · Droplet — `docker01.<CLIENT_DOMAIN>`
 
 - Create via `doctl … -t "$DO_API_KEY"`: Ubuntu 24.04 LTS, ~4GB/2vCPU (resize later),
-  **region = nearest to `CLIENT_LOCATION`** from the pack, no
+  **region = nearest to `CLIENT_LOCATION`** from the pack (unset → **`nyc3`**, the
+  operator default — the field exists for the exceptions, #17), no
   IPv6, **daily DO backups ON at creation** (hour must be 0/4/8/12/16/20 UTC — remember the
   window when scheduling droplet crons later; terminal jobs follow §6's scheduling
   contract instead), monitoring agent, the terminal's SSH key (generate
