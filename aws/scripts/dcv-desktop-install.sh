@@ -134,9 +134,19 @@ if command -v xrandr >/dev/null 2>&1; then
     xrandr --output "$OUT" --mode 1920x1080_60 --primary >/dev/null 2>&1
   fi
 fi
+# Self-heal watchdog (#21): probes the framebuffer once gnome-shell is up and
+# restarts it in place if it never painted. Backgrounded — never blocks login.
+[ -x /opt/asp/session-paint-probe.sh ] && /opt/asp/session-paint-probe.sh >/dev/null 2>&1 &
 exec /etc/X11/Xsession
 INIT
 chmod 755 /etc/dcv/dcvsessioninit
+# the watchdog the init hook above launches — from the tenant bucket
+# (rollout.sh syncs scripts/); runs as the session user, hence world-readable
+if aws s3 cp "s3://$ASP_BUCKET/scripts/session-paint-probe.sh" /opt/asp/session-paint-probe.sh; then
+  chmod 755 /opt/asp/session-paint-probe.sh
+else
+  echo "WARN: session-paint-probe.sh not in bucket — paint watchdog skipped" >&2
+fi
 # remove the dead-end init attempts (nothing ever executed these)
 rm -f /var/lib/dcv-session-manager-agent/init/default.sh \
       /usr/share/gnome-session/sessions/ubuntu-dcv.session
