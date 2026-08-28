@@ -321,6 +321,36 @@ elif is_medical_terminal; then
     fi
 fi
 
+# ---- scheduling hygiene (#16) ------------------------------------------------
+# Terminal boxes sleep more than they run. A timed crontab entry has no
+# catch-up — it silently skips every night the box is off at that minute —
+# and a calendar timer only survives downtime with Persistent=true. anacron
+# covers /etc/cron.daily|weekly|monthly, so run-parts jobs are fine. Only
+# local units (files in /etc/systemd/system) are policed: stock distro timers
+# are Ubuntu's problem, jobs added on an engagement are ours.
+if systemctl list-units >/dev/null 2>&1; then
+    BADT=""
+    while read -r t _; do
+        [ -f "/etc/systemd/system/$t" ] || continue
+        [ -n "$(systemctl show "$t" -p TimersCalendar --value 2>/dev/null)" ] || continue
+        [ "$(systemctl show "$t" -p Persistent --value 2>/dev/null)" = "yes" ] || BADT="$BADT $t"
+    done < <(systemctl list-unit-files --type=timer --state=enabled --no-legend 2>/dev/null)
+    if [ -n "$BADT" ]; then
+        f "calendar timer(s) without Persistent=true:$BADT — they silently skip while the box sleeps"
+    else
+        p "local calendar timers all have Persistent=true (missed runs fire on wake)"
+    fi
+    CRONS=$({ crontab -l 2>/dev/null; sudo -n crontab -l 2>/dev/null; } \
+        | grep -cE '^[[:space:]]*([0-9*]|@(hourly|daily|midnight|weekly|monthly|yearly|annually))')
+    if [ "${CRONS:-0}" -gt 0 ]; then
+        f "$CRONS timed crontab entr(y|ies) — plain cron has no catch-up on a box that sleeps; use a Persistent=true systemd timer"
+    else
+        p "no timed crontab entries (user/root)"
+    fi
+else
+    s "systemd not reachable — scheduling hygiene checks skipped"
+fi
+
 log "extras (reported only when artifacts exist)"
 if pkg_installed docker-ce; then
     if systemctl is-active docker >/dev/null 2>&1; then p "docker active"; else f "docker installed but not active"; fi
