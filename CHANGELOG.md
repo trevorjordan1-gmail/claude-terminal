@@ -1,6 +1,26 @@
 # Changelog
 
-## 2026-08-21 — PRODUCT-APP template (#15)
+## 2026-08-28 — the cct02 incident cluster (#19, #20, #21)
+
+- **needrestart no longer restarts DCV services** (#19): library security
+  updates (libpam, libssl) were triggering needrestart's apt hook to restart
+  `dcvserver` — tearing down every live session and the Claude job inside it.
+  `dcv-desktop-install.sh` writes `/etc/needrestart/conf.d/asp-dcv.conf`
+  deferring dcvserver / dcvsessionlauncher / dcv-session-manager-agent to the
+  next reboot or pause→off conversion (their existing restart cadence).
+- **Flat-framebuffer stall mitigated at the source** (#20): mutter could
+  start against Xdcv's default `800x600 @ 0.00 Hz` mode and latch a dead
+  frame clock — the session then streamed one flat colour and no RandR
+  change recovered it. `dcvsessioninit` now creates and applies a real
+  1920x1080@59.96 mode before gnome-session starts (best-effort, never
+  blocks login). Runbook §10 gains the diagnose/recover gotcha.
+- **Session paint probe** (#21): `session-paint-probe.sh`, backgrounded from
+  `dcvsessioninit` — counts distinct framebuffer colours ~10 s after
+  gnome-shell starts; ≤2 means "never painted" → TERM gnome-shell (unit is
+  `Restart=always`; relaunches in place, apps survive), max 2 attempts, loud
+  journal give-up, S3 marker under `status/paint/` either way so the fleet's
+  real failure rate becomes measurable. `--count` mode doubles as the #20
+  repro harness's measuring tool.
 
 - **`templates/PRODUCT-APP.md`**: how an existing product — one image from a
   private registry serving many clients — lands on an already-built platform.
