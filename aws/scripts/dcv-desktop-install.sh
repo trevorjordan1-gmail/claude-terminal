@@ -132,6 +132,23 @@ mkdir -p /etc/systemd/system/dcv-session-manager-agent.service.d
 printf '[Unit]\nPartOf=dcvserver.service\nAfter=dcvserver.service\n' > /etc/systemd/system/dcv-session-manager-agent.service.d/override.conf
 systemctl daemon-reload
 
+# needrestart's apt hook (stock on noble) restarts every service linking a
+# just-upgraded library — for dcvserver that tears down every live session and
+# the Claude job running inside it (unattended libpam upgrade, fleet incident
+# 2026-08-28, issue #19). Defer DCV restarts instead: the services pick the new
+# libraries up at the next reboot / pause→off conversion, which is their
+# existing restart cadence anyway. Conf.d files are Perl, evaluated by
+# needrestart after its main config — keys here override the stock ones.
+mkdir -p /etc/needrestart/conf.d
+cat > /etc/needrestart/conf.d/asp-dcv.conf <<'NR'
+# ASP: never auto-restart DCV services — a dcvserver restart kills every live
+# session and running Claude job (claude-terminal#19). They converge on the
+# next reboot or the 48-h pause→off conversion.
+$nrconf{override_rc}{qr(^dcvserver)} = 0;
+$nrconf{override_rc}{qr(^dcvsessionlauncher)} = 0;
+$nrconf{override_rc}{qr(^dcv-session-manager-agent)} = 0;
+NR
+
 prog 95 "Connecting to the session broker" 1
 
 # the nice-dcv-server package does NOT enable its unit — without this the
