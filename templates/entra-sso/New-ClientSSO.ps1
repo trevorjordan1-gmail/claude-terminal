@@ -18,9 +18,10 @@
   Requires the Microsoft Graph PowerShell SDK:  Install-Module Microsoft.Graph -Scope CurrentUser
 
 .EXAMPLE
-  ./New-ClientSSO.ps1 -ClientCode acme -AiopsUpn aiops@acme-example.com
+  ./New-ClientSSO.ps1 -ClientCode acme -TeamName hidden-resonance-c421 -AiopsUpn aiops@acme-example.com
 
-  Creates "acme-sso" with redirect https://acme.cloudflareaccess.com/cdn-cgi/access/callback,
+  Creates "acme-sso" with redirect
+  https://hidden-resonance-c421.cloudflareaccess.com/cdn-cgi/access/callback,
   grants the sign-in permissions, adds aiops as owner, mints a 12-month secret labeled
   "cloudflare-access".
 
@@ -38,7 +39,9 @@ param(
   #   GET https://api.cloudflare.com/client/v4/accounts/{id}/access/organizations
   #   -> .result.auth_domain (strip ".cloudflareaccess.com")
   # and pass it here. A wrong value = staff sign-in fails AADSTS50011.
-  [string]$TeamName = $ClientCode,
+  # MANDATORY since #18 (field-hit): the old `= $ClientCode` default WAS the guessed
+  # redirect URI that broke the first human sign-in. There is no safe default.
+  [Parameter(Mandatory)] [string]$TeamName,
   # UPN of the service account to add as OWNER of the registration (recommended:
   # object-scoped power only - lets automation add redirect URIs/secrets later without
   # any directory role). Omit to skip.

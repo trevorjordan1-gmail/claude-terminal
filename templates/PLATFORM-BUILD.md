@@ -85,7 +85,9 @@ Access application per hostname (`status.<CLIENT_DOMAIN>` now; NEW-APP adds one 
   to the workspace `.env`. Every deploy and the verification battery can then assert
   **authenticated → 200** with headers, no human OTP login ever needed.
 - **Proof:** unauthenticated request → Access challenge; request with the probe token's
-  `CF-Access-Client-Id`/`CF-Access-Client-Secret` headers → 200.
+  `CF-Access-Client-Id`/`CF-Access-Client-Secret` headers → 200. Service tokens never
+  touch the IdP (no OIDC redirect, no reply-URL check, #18) — the *interactive* staff
+  login is proven at ENTRA-SSO step 2 and re-asserted by §7's HUMAN GATE line.
 
 ## 4 · Postgres — one instance, walls proven
 

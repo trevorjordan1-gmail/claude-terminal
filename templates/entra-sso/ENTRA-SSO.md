@@ -18,7 +18,11 @@ e.g. `hidden-resonance-c421`; the conventional short name may belong to another 
 and a guessed redirect URI fails staff sign-in with AADSTS50011): it's `TEAM_DOMAIN` in
 the pack (recorded at the ZT bootstrap); verify any time via
 `GET /accounts/{id}/access/organizations` → `.result.auth_domain`. Pass its prefix as
-`-TeamName`.
+`-TeamName`. **`TEAM_DOMAIN` absent → STOP and fetch it from that endpoint** (then
+record it in the pack) — never proceed by deriving it from `CLIENT_CODE`: the script
+refuses to guess (`-TeamName` is mandatory, #18), `platform-verify.sh` cross-checks the
+pack against the live auth_domain, and its HUMAN GATE line exists because no
+service-token probe ever exercises this redirect.
 
 - **Managed tenant (adNET holds admin) — two equivalent ways:**
   - *From the engineer's own machine:* any PowerShell,

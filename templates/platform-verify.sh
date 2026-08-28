@@ -104,6 +104,31 @@ if [ -n "${ACCESS_PROBE_CLIENT_ID:-}" ] && [ -n "${ACCESS_PROBE_CLIENT_SECRET:-}
 else
   result SKIP "authenticated → 200 (no ACCESS_PROBE_* in the pack — mint the probe service token)" ""
 fi
+# The service-token probe never touches the IdP (#18): no OIDC redirect, no
+# reply-URL check, no Entra claims — everything above proves the edge and the
+# policy exist, and NOTHING about whether a person can sign in. Two guards:
+# (1) the pack's TEAM_DOMAIN must match the live Zero Trust auth_domain — a
+# guessed/stale value renders a wrong Entra redirect URI (AADSTS50011) that
+# only a human login would ever surface;
+if command -v jq >/dev/null 2>&1; then
+  AD=$(curl -s --max-time 15 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+    "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/access/organizations" \
+    | jq -r '.result.auth_domain // empty' 2>/dev/null)
+  if [ -z "${TEAM_DOMAIN:-}" ]; then
+    result FAIL "TEAM_DOMAIN missing from the pack — record the live auth_domain (${AD:-unreadable}); NEVER derive redirect URIs from CLIENT_CODE" ""
+  elif [ -z "$AD" ]; then
+    result SKIP "TEAM_DOMAIN drift — /access/organizations unreadable with this token" ""
+  elif [ "$AD" = "$TEAM_DOMAIN" ]; then
+    result PASS "pack TEAM_DOMAIN matches live Zero Trust auth_domain" "$AD"
+  else
+    result FAIL "pack TEAM_DOMAIN ($TEAM_DOMAIN) != live auth_domain ($AD) — Entra redirect URIs rendered from the pack are wrong (AADSTS50011)" ""
+  fi
+else
+  result SKIP "TEAM_DOMAIN drift check — jq not installed" ""
+fi
+# (2) interactive login is not automatable BY DESIGN — it is a recorded human
+# acceptance step, never inferred from an all-PASS battery:
+result SKIP "HUMAN GATE (not automatable by design): one named person completed an interactive Access login to https://status.$DOMAIN via the client IdP and saw the app — record who + when in STATE.md" ""
 # jq, not python: nested f-string quoting inside sh single quotes was a field-hit SyntaxError
 if command -v jq >/dev/null 2>&1; then
   TUN=$(curl -s --max-time 15 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
@@ -170,7 +195,8 @@ say ""
 say "## Verdict: $PASS pass · $FAIL fail · $SKIP skip"
 say ""
 say "_Engineer sign-off: review every FAIL/SKIP above; stage 4 is 'verified' only when_"
-say "_this section is all-PASS or each SKIP has a recorded reason in STATE.md._"
+say "_this section is all-PASS or each SKIP has a recorded reason in STATE.md — and the_"
+say "_HUMAN GATE line carries a recorded name + date (all-PASS never implies it, #18)._"
 printf '%s\n' "${LINES[@]}" > "$REPORT"
 echo ""
 echo "Report written: $REPORT"
