@@ -59,14 +59,18 @@ Pack lives ONLY in `./.env` (0600). Hudu "Ai Foundations" = root of trust (login
 seeds, backup codes, break-glass, both restic passwords — NOT regenerable). API keys are
 never vaulted — regenerable from the logins.
 
-| Credential | Named | Expires | Notes |
-|---|---|---|---|
-| Cloudflare token | {{CLIENT_CODE}}-cct01 {{BUILDER_NAME}} | {{date — CF max 1 yr}} | identify by ID: {{id}} |
-| DigitalOcean token | 〃 | {{date}} | full-access, 1 yr |
-| GitHub machine PAT | 〃 | {{date}} | fine-grained, org-scoped, all-RW set (incl. Issues) |
-| Wasabi root keys | — | — | ⚠ billing session must land inside the 30-day trial |
-| Healthchecks keys | — | — | management + read-only (status page uses RO) |
-| aiops mail token | this terminal | renews with use | device-code as aiops; re-`login` if it lapses — no admin needed |
+Minted {{CREDENTIALS_MINTED}} — every mintable credential (CF, DO, both GitHub PATs, the
+Entra secret) carries the operator-standard **12-month lifetime**, so all expiries ≈ the
+engagement anniversary; calendar owner: {{name}}. Only identifiers vary per credential:
+
+| Credential | Named | Notes |
+|---|---|---|
+| Cloudflare token | {{CLIENT_CODE}}-cct01 {{BUILDER_NAME}} | identify by ID: {{CF_TOKEN_ID}} |
+| DigitalOcean token | 〃 | full-access |
+| GitHub machine PAT | 〃 | fine-grained, org-scoped, all-RW set (incl. Issues) |
+| Wasabi root keys | — | ⚠ billing session must land inside the 30-day trial |
+| Healthchecks keys | — | management + read-only (status page uses RO) |
+| aiops mail token | this terminal | device-code as aiops, renews with use; re-`login` if it lapses — no admin needed |
 
 ## Next actions (resume point)
 
@@ -74,8 +78,9 @@ never vaulted — regenerable from the logins.
 
 ## Growth / hardening watch-list (seeded from the pilots' real failure modes)
 
-1. **Secret expiry** — every token above has a real date recorded + a calendar owner; the
-   pilot's non-expiring PAT was its weakest link.
+1. **Secret expiry** — every mintable credential expires (the 12-month standard) and the
+   anniversary has a calendar owner; the pilot's non-expiring PAT was its weakest link.
+   The convention replaced per-credential date transcription (#17).
 2. **Disk on the shared droplet** — prune on every deploy (CI images add up); DO alert at 80%.
 3. **Network-bridge fragility** — every external Docker net declared in every compose file
    that uses it; runtime `network connect` is forbidden.

@@ -21,9 +21,11 @@ archives as files (scp) and never `docker exec -i` inside a piped script.
 ## 1 · Droplet — `docker01.<CLIENT_DOMAIN>`
 
 - Create via `doctl … -t "$DO_API_KEY"`: Ubuntu 24.04 LTS, ~4GB/2vCPU (resize later),
-  **region = nearest to `CLIENT_LOCATION`** from the pack, no
+  **region = nearest to `CLIENT_LOCATION`** from the pack (unset → **`nyc3`**, the
+  operator default — the field exists for the exceptions, #17), no
   IPv6, **daily DO backups ON at creation** (hour must be 0/4/8/12/16/20 UTC — remember the
-  window when scheduling crons later), monitoring agent, the terminal's SSH key (generate
+  window when scheduling droplet crons later; terminal jobs follow §6's scheduling
+  contract instead), monitoring agent, the terminal's SSH key (generate
   ed25519 here if none; passphrase-less is deliberate — 0600 + firewall are the controls).
 - Harden immediately, before anything else touches it: non-root sudo user
   `<CLIENT_CODE>` (NOPASSWD — non-interactive deploys; key already grants root-equivalent),
@@ -83,7 +85,9 @@ Access application per hostname (`status.<CLIENT_DOMAIN>` now; NEW-APP adds one 
   to the workspace `.env`. Every deploy and the verification battery can then assert
   **authenticated → 200** with headers, no human OTP login ever needed.
 - **Proof:** unauthenticated request → Access challenge; request with the probe token's
-  `CF-Access-Client-Id`/`CF-Access-Client-Secret` headers → 200.
+  `CF-Access-Client-Id`/`CF-Access-Client-Secret` headers → 200. Service tokens never
+  touch the IdP (no OIDC redirect, no reply-URL check, #18) — the *interactive* staff
+  login is proven at ENTRA-SSO step 2 and re-asserted by §7's HUMAN GATE line.
 
 ## 4 · Postgres — one instance, walls proven
 
@@ -126,6 +130,17 @@ postgres/template1 from PUBLIC) — runs once on empty PGDATA only.
   volume + `/opt/<CLIENT_CODE>` configs → restic repo (RESTIC_PASSWORD_DOCKER01); this
   terminal — home directory → its own repo path (RESTIC_PASSWORD_CCT). 7d/4w/6m retention.
   Each job pings its check on success.
+- **Scheduling contract (#16) — where a job lives decides how it is scheduled.** On the
+  **droplet** (always-on): cron is fine, as used throughout this playbook. On a
+  **terminal**: NEVER a timed crontab entry — the box hibernates more than it runs, plain
+  cron has no catch-up, so `45 3 * * *` silently skips and nothing alerts, because nothing
+  ran (field-hit: a terminal restic job missed two nights unnoticed). anacron covers only
+  `/etc/cron.daily|weekly|monthly`. Terminal jobs are **systemd timers with
+  `Persistent=true`** — copy `asp-backup.timer`'s shape; missed runs then fire on the next
+  wake. Either way the job pings a Healthchecks check: the silence alert is the only thing
+  that catches "never ran" (§5's silent-alarm instinct — alert on staleness, not only on
+  error). The kit's `verify.sh` FAILs local calendar timers without `Persistent=true` and
+  timed crontab entries on terminals.
 - **Nightly restore-verify:** restore the latest snapshot into a scratch container,
   integrity-check (row counts / restic check), ping its own check.
 - **Proof:** run one full manual drill now — restore, verify content, tear down — and one
