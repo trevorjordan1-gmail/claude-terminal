@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-08-28 — engagement-kit hardening (#16, #17, #18)
+
+- **Scheduling contract** (#16): droplets (always-on) schedule with cron;
+  terminals (hibernate more than they run) use systemd timers with
+  `Persistent=true` — plain cron has no catch-up and a job that never runs
+  raises no error. Stated in PLATFORM-BUILD §6 + SETUP join-mode; `verify.sh`
+  now FAILs local calendar timers without `Persistent=true` and timed
+  crontab entries.
+- **One credential lifetime, one minted date** (#17): the five `*_EXPIRES`
+  pack fields are gone — the operator standard is a 12-month lifetime for
+  every mintable credential, so `CREDENTIALS_MINTED` (optional, one date)
+  plus the convention replaces per-credential transcription. `CF_TOKEN_ID`
+  stays (revocation identifier). STATE template's credential table loses its
+  Expires column; `CLIENT_LOCATION` gets a documented default (`nyc3`).
+- **Human login gate + TEAM_DOMAIN discipline** (#18): the service-token
+  probe never touches the IdP, so `platform-verify.sh` now prints a counted
+  HUMAN GATE line (interactive Access login by a named person, recorded in
+  STATE.md) and cross-checks the pack's `TEAM_DOMAIN` against the live Zero
+  Trust `auth_domain`. `New-ClientSSO.ps1 -TeamName` is mandatory — its old
+  `= $ClientCode` default was the guessed redirect URI behind a field
+  AADSTS50011.
+
 ## 2026-08-28 — the cct02 incident cluster (#19, #20, #21)
 
 - **needrestart no longer restarts DCV services** (#19): library security
