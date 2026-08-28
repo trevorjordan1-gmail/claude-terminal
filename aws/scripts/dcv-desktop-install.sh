@@ -28,7 +28,9 @@ if ! dpkg -s nice-dcv-server >/dev/null 2>&1; then
   apt-get install -y ./nice-dcv-server_*.deb ./nice-xdcv_*.deb || { echo "FATAL: DCV server install failed" >&2; exit 1; }
   usermod -aG video dcv
 fi
-apt-get install -y mesa-utils
+# mesa: llvmpipe GL; x11-xserver-utils: xrandr for the session-init pre-mode
+# (#20); x11-apps: xwd for the paint probe (#21)
+apt-get install -y mesa-utils x11-xserver-utils x11-apps
 
 # ---- session manager agent (server must exist first) ----
 if ! dpkg -s nice-dcv-session-manager-agent >/dev/null 2>&1; then
@@ -53,6 +55,9 @@ cat > /etc/dcv/dcv.conf <<CONF
 # CPU and encoded by dcvagent — at 60 the render+encode loop ate most of a
 # core on a busy screen (TJ 2026-08-17); 30 halves that ceiling and is fine
 # for terminal work.
+# NOT a complete cure (#20): Xdcv's default 800x600 mode advertises 0.00 Hz,
+# and a shell that starts against it can still latch a dead frame clock —
+# dcvsessioninit below sets a real mode before gnome-session for that.
 virtual-session-xdcv-args="-fakescreenfps 30"
 
 [session-management/defaults]
@@ -114,6 +119,21 @@ export GNOME_SHELL_SESSION_MODE=ubuntu
 # be on XDG_DATA_DIRS for the dock/app grid to show it (Chrome is a deb now,
 # but any snap the user installs later still needs this)
 [ -f /etc/profile.d/apps-bin-path.sh ] && . /etc/profile.d/apps-bin-path.sh
+# Give the display a REAL mode before gnome-session starts (#20): Xdcv's only
+# default mode is 800x600 @ 0.00 Hz, and a gnome-shell that starts against it
+# can latch a dead frame clock — the session then streams one flat frame and
+# no later RandR change (dcvagent's Connect-time mode, set-display-layout)
+# restarts the clock. With a real mode first, the Connect-time layout is a
+# routine change instead of the first live refresh rate the shell ever sees.
+# Best-effort by design: session startup must never block on this.
+if command -v xrandr >/dev/null 2>&1; then
+  OUT=$(xrandr --query 2>/dev/null | awk '/ connected/{print $1; exit}')
+  if [ -n "$OUT" ]; then
+    xrandr --newmode 1920x1080_60 173.00 1920 2048 2248 2576 1080 1083 1088 1120 -hsync +vsync >/dev/null 2>&1
+    xrandr --addmode "$OUT" 1920x1080_60 >/dev/null 2>&1
+    xrandr --output "$OUT" --mode 1920x1080_60 --primary >/dev/null 2>&1
+  fi
+fi
 exec /etc/X11/Xsession
 INIT
 chmod 755 /etc/dcv/dcvsessioninit
