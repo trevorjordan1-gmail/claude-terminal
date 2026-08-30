@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-08-30 — root-owned `~/.config` broke user-level writes on new boxes
+
+Field report from a fresh DCV build box: `42-terminal-prefs` FAILED with
+`Failed to create file “/home/build/.config/dconf/user.XXXX”: No such file or
+directory`, `50-okular-md` could not write `mimeapps.list`, and `40-gnome-qol`
+reported **OK while writing nothing**.
+
+- **Root cause** (`aws/scripts/desktop-setup.sh`): `seed_chrome_first_run` ran
+  `install -d "$1/.config/google-chrome"` as root and then chowned only
+  `google-chrome/`. `install -d` creates the missing **parent** too, so on any
+  box where `~/.config` did not already exist — fresh build boxes — it was left
+  `root:root`. Every later user-level write into `~/.config` then failed.
+  Fixed: `.config` is created and chowned explicitly alongside its child.
+- **`gsettings set` exits 0 when dconf cannot commit**, which is why a module
+  could report OK with nothing written — the same silent-write class as the
+  busless-bus defect fixed in 43b6e27, different cause.
+- **`bootstrap.sh` now self-heals** — before any module runs, a `~/.config`,
+  `~/.local` or `~/.cache` not owned by the invoking user is chowned back (it
+  already holds sudo at that point). Repair rather than `die` because the fleet
+  re-runs bootstrap unattended. **This is what fixes boxes already in the
+  field**: the kit self-propagates via the daily `get.sh`, so affected boxes
+  repair themselves on their next run without waiting on an aws-side rollout.
+- **`verify.sh` scores it** — XDG dirs not owned by the user FAIL with the
+  remediation, and the check sits above the GNOME checks whose results it
+  would otherwise silently invalidate.
+- `seed_chrome_first_run` also returned 1 on its `/etc/skel` call (trailing
+  `&&` chain with no owner arg) — harmless under the script's
+  `set -uxo pipefail`, a hard stop the day anyone adds `-e`. Now an `if`.
+
+**Operator action:** the `desktop-setup.sh` half only affects newly provisioned
+boxes and needs `rollout.sh scripts` to land; existing boxes are covered by the
+bootstrap self-heal on their next daily run.
+
 ## 2026-08-30 — Entra SSO registration becomes a build step (#22)
 
 - **`templates/entra-sso/provision-sso.py`** — python port of

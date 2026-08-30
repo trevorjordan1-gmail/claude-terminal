@@ -115,6 +115,19 @@ else
     s "~/.claude-mem not present yet (created on first claude session after install)"
 fi
 
+# A root-owned XDG dir silently defeats dconf/xdg-mime writes (gsettings still
+# exits 0), so check ownership before trusting any GNOME state below.
+_xdg_bad=""
+for _d in .config .local .cache; do
+    [ -e "$HOME/$_d" ] || continue
+    [ "$(stat -c %u "$HOME/$_d" 2>/dev/null)" = "$(id -u)" ] || _xdg_bad="$_xdg_bad ~/$_d"
+done
+if [ -n "$_xdg_bad" ]; then
+    f "not owned by $(id -un):$_xdg_bad — user-level writes (dconf, xdg-mime) fail silently; re-run ./bootstrap.sh to repair"
+else
+    p "XDG dirs owned by $(id -un)"
+fi
+
 # GNOME state reads straight from the dconf database — no session or bus
 # needed, so these run on headless boxes too (cloud/DCV, unattended builds).
 if have gsettings && gsettings list-schemas 2>/dev/null | grep -q '^org\.gnome\.shell$'; then

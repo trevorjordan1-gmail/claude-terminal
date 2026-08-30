@@ -143,9 +143,22 @@ cat > /opt/google/chrome/initial_preferences <<'JSON'
 }
 JSON
 seed_chrome_first_run() {  # $1 = home dir, $2 = owner (empty for /etc/skel)
-  install -d "$1/.config/google-chrome"
+  # `install -d a/b` creates the missing PARENT as root too. Chowning only
+  # .config/google-chrome therefore left ~/.config itself root-owned on any box
+  # where it did not already exist (fresh build boxes) — and a root-owned
+  # ~/.config breaks EVERY later user-level write: dconf cannot commit
+  # ("Failed to create file .../dconf/user.XXXX"), xdg-mime cannot write
+  # mimeapps.list, and `gsettings set` still exits 0, so modules report OK while
+  # writing nothing. Chown the parent as well.
+  install -d "$1/.config" "$1/.config/google-chrome"
   : > "$1/.config/google-chrome/First Run"
-  [ -n "${2:-}" ] && chown -R "$2:$2" "$1/.config/google-chrome"
+  # `if`, not a trailing `&&` chain: with no owner (the /etc/skel call) the chain
+  # returned 1 as the function's exit status — harmless under this script's
+  # `set -uxo pipefail`, a hard stop the day anyone adds `-e`.
+  if [ -n "${2:-}" ]; then
+    chown "$2:$2" "$1/.config"
+    chown -R "$2:$2" "$1/.config/google-chrome"
+  fi
 }
 for u in $(echo "${ASP_ALL_USERS:-$ASP_LOCAL_USER}" | tr ',' ' '); do
   h=$(getent passwd "$u" | cut -d: -f6)
