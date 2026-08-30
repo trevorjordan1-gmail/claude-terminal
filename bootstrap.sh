@@ -90,6 +90,22 @@ export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:$PATH"
 log "sudo is needed for apt operations — you may be prompted once."
 sudo -n true 2>/dev/null || sudo -v || die "sudo access is required."
 
+# Self-heal a root-owned XDG dir before any module writes to one. The fleet
+# provisioner seeds Chrome's first-run file as root, and `install -d` created
+# the missing parent ~/.config as root with it (fixed in desktop-setup.sh, but
+# boxes built before that fix are already in the field). A root-owned ~/.config
+# makes every later user-level write fail in a way that is hard to read: dconf
+# cannot commit its database, xdg-mime cannot write mimeapps.list, and
+# `gsettings set` STILL EXITS 0 — so modules report OK while writing nothing.
+# The fleet re-runs this unattended, so repair in place rather than dying.
+for _d in .config .local .cache; do
+    [ -e "$HOME/$_d" ] || continue
+    [ "$(stat -c %u "$HOME/$_d" 2>/dev/null)" = "$(id -u)" ] && continue
+    log "repairing ownership of ~/$_d (owned by $(stat -c %U "$HOME/$_d" 2>/dev/null) — root-seeded during provisioning)"
+    sudo chown -R "$(id -u):$(id -g)" "$HOME/$_d" || die "could not repair ~/$_d ownership"
+done
+unset _d
+
 # --medical is state, not a per-run switch: the marker persists so unattended
 # re-runs (the DCV updater passes no flags) keep the box medical.
 if [ "${CT_MEDICAL:-0}" = 1 ]; then
