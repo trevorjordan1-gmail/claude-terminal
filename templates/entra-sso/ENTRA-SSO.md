@@ -6,12 +6,15 @@ ONE registration per client, ever.
 
 ## Step 1 — create the registration (who runs what)
 
-**Sequencing:** the registration needs no terminal and no platform — on a FRESH
-engagement the engineer creates it during the accounts pass (stage 2, script path below)
-and this runbook's step 2 runs later at platform build. The relay flow exists for
-RETROFITS (a terminal already lives, the accounts pass predates the SSO step — the field-hit
-case). Nothing hard-blocks: a build without `ENTRA_*` ships email-OTP policies, and step 2
-flips them to Entra when the values land (field-proven).
+**Sequencing:** the registration is a **platform-build step** (PLATFORM-BUILD.md step 3):
+when the build reaches Access wiring and the pack lacks `ENTRA_*`, Claude mints it right
+there with `provision-sso.py --pack` — by then `TEAM_DOMAIN` is real, so the redirect URI
+can never be guessed, and the secret goes straight into the pack. It may still be created
+EARLIER (accounts pass, engineer's machine, script below) when the values are wanted ahead
+of the build — both land on the same one-per-client object because every path is
+idempotent-or-refuses. Nothing hard-blocks: a build without `ENTRA_*` (external IT hasn't
+replied) ships email-OTP policies, and step 2 flips them to Entra when the values land
+(field-proven).
 
 **FIRST — the real Zero Trust team domain** (field-hit: Cloudflare AUTO-GENERATES it,
 e.g. `hidden-resonance-c421`; the conventional short name may belong to another customer,
@@ -24,26 +27,24 @@ refuses to guess (`-TeamName` is mandatory, #18), `platform-verify.sh` cross-che
 pack against the live auth_domain, and its HUMAN GATE line exists because no
 service-token probe ever exercises this redirect.
 
-- **Managed tenant (adNET holds admin) — two equivalent ways:**
-  - *From the engineer's own machine:* any PowerShell,
+- **Managed tenant (adNET holds admin) — Claude runs it, one sign-in (the default):**
+  ```
+  python3 ~/claude-terminal/templates/entra-sso/provision-sso.py --pack ~/Projects/<code>.tools/.env [--apply]
+  ```
+  `provision-sso.py` is the python port of New-ClientSSO.ps1 for exactly this seat: no
+  PowerShell or module installs, **idempotent** (re-runs extend the one registration —
+  add the redirect URI once `TEAM_DOMAIN` exists, re-mint an expired secret — instead of
+  refusing), dry-run by default, and pack-integrated: it reads `CLIENT_CODE` /
+  `TEAM_DOMAIN` / `AIOPS_UPN` and on `--apply` writes `ENTRA_*` straight back into the
+  pack — the secret never transits another machine. Auth is the same field-proven
+  device-code relay baked in (az-cli client, `.default`, tenant-pinned, polls the full
+  15-min window): it prints ONE sign-in link (code pre-filled) and the engineer opens it
+  **from their own device** — admin credentials never touch the box.
+  - *Alternative, from the engineer's own machine:* any PowerShell,
     `./New-ClientSSO.ps1 -ClientCode <code> -TeamName <real-team> -AiopsUpn aiops@<clientdomain>`
-    — browser sign-in pops locally. Two minutes.
-  - *Claude runs it ON this terminal (preferred — admin credentials never touch the box).*
-    One-time tooling: `sudo snap install powershell --classic`, then in pwsh install the
-    FOUR Graph submodules only (`Microsoft.Graph.Authentication`, `.Applications`,
-    `.Users`, `.Identity.SignIns` — ~1 min; the 39-module meta-package is unnecessary);
-    log both in os-changes. Then the **field-proven relay flow** (the SDK's own
-    `-UseDeviceCode` waits only ~120s — too short for a relayed code; and repeated mints
-    on `common` trip AADSTS50059 throttling, so this flow is tenant-pinned with a 15-min
-    window):
-    ```
-    GRAPH_TOKEN=$(./get-graph-token-devicecode.sh <tenant-id-or-domain>)   # relay the printed code
-    GRAPH_TOKEN="$GRAPH_TOKEN" pwsh ./New-ClientSSO.ps1 -ClientCode <code> \
-      -TeamName <real-team> -AiopsUpn aiops@<clientdomain> -UseEnvToken
-    ```
-    Claude relays the code; the engineer signs in from their OWN device at
-    microsoft.com/devicelogin (MFA applies). Claude feeds the printed values straight into
-    the pack — no copy/paste hop.
+    — browser sign-in pops locally. Two minutes. (Or the legacy relay:
+    `get-graph-token-devicecode.sh` → `-UseEnvToken`, kept for tenants where the
+    python path hits policy walls.)
   - **Relay-flow discipline (non-negotiable):** a completed Global-Admin sign-in yields a
     token with directory-wide write power. The engineer enters only a code they requested
     seconds ago from this flow and no other; codes are single-use, 15-minute expiry; the
