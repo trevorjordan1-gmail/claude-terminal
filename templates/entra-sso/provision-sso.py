@@ -37,19 +37,31 @@ Usage (on the terminal, from the workspace):
 
 --pack reads CLIENT_CODE, TEAM_DOMAIN, AIOPS_UPN, ENTRA_TENANT_ID (tenant fallback: the
 aiops UPN's domain) and, on --apply, writes ENTRA_TENANT_ID / ENTRA_CLIENT_ID /
-ENTRA_CLIENT_SECRET / ENTRA_SECRET_EXPIRES back into the same file (mode preserved).
-Expiry also goes in STATE.md's credential table — that part is on you.
+ENTRA_CLIENT_SECRET back into the same file (mode preserved). There is deliberately NO
+per-credential expiry field (#17): the Entra secret takes the operator-standard 12-month
+lifetime like every other mintable credential, so the pack's ONE `CREDENTIALS_MINTED` date
+and STATE.md's single minted line already carry it.
 
 External-IT tenants: do NOT use this — send ENTRA-SSO-REQUEST.template.md (+ New-ClientSSO.ps1).
 """
 import argparse, json, os, re, stat, sys, time, urllib.error, urllib.parse, urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 AZCLI = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"   # az-cli first-party public client (present in fresh tenants)
 GRAPH_APPID = "00000003-0000-0000-c000-000000000000"
 SIGNIN = ["openid", "profile", "email", "offline_access"]
 MAIL = ["Mail.Read", "Mail.ReadWrite", "Mail.Send"]
 SECRET_LABEL = "cloudflare-access"
+
+
+def add_months(dt, months):
+    """Calendar-month add. The operator standard is a 12-MONTH lifetime (#17), not 360 days —
+    every mintable credential must land on ≈ the same engagement anniversary."""
+    y, m = divmod(dt.month - 1 + months, 12)
+    y, m = dt.year + y, m + 1
+    leap = y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
+    return dt.replace(year=y, month=m,
+                      day=min(dt.day, [31, 29 if leap else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]))
 
 
 def parse_args():
@@ -121,7 +133,7 @@ class Graph:
     def __init__(self, tok, apply):
         self.tok, self.apply = tok, apply
 
-    def call(self, method, path, body=None):
+    def call(self, method, path, body=None, soft=False):
         if method != "GET" and not self.apply:
             print(f"    DRY-RUN {method} {path} {json.dumps(body) if body else ''}")
             return {"dryRun": True}
@@ -133,10 +145,12 @@ class Graph:
                 raw = r.read()
                 return json.loads(raw) if raw else {}
         except urllib.error.HTTPError as e:
+            if soft:
+                return None
             sys.exit(f"FAILED {method} {path}: HTTP {e.code} {e.read()[:300].decode(errors='replace')}")
 
-    def get(self, path):
-        return self.call("GET", path)
+    def get(self, path, soft=False):
+        return self.call("GET", path, soft=soft)
 
 
 def main():
@@ -214,11 +228,17 @@ def main():
                 print(f"GRANT {label}: {' '.join(scopes)}")
 
         ensure("AllPrincipals", None, SIGNIN, "sign-in (all users)")
-        if aiops_upn:
-            u = g.get(f"users/{aiops_upn}?$select=id")
+        u = g.get(f"users/{aiops_upn}?$select=id", soft=True) if aiops_upn else None
+        if aiops_upn and not u:
+            # The mailbox often does not exist yet at platform-build time. The registration is
+            # the valuable part and is already done — do NOT abort half-finished.
+            print(f"  ⚠ aiops user {aiops_upn} not found in this tenant — mail rider + owner SKIPPED.")
+            print(f"    Registration itself is COMPLETE. Create the mailbox (aiops-mail.sh), then re-run")
+            print(f"    this script (idempotent) or Grant-AiopsMail.ps1 to add the rider.")
+        elif u:
             ensure("Principal", u["id"], SIGNIN + MAIL, f"mail rider ({aiops_upn} ONLY — its own mailbox, nothing tenant-wide)")
             for kind, oid in (("applications", app_id), ("servicePrincipals", sp_id)):
-                owners = {o["id"] for o in g.get(f"{kind}/{oid}/owners?$select=id").get("value", [])}
+                owners = {o["id"] for o in (g.get(f"{kind}/{oid}/owners?$select=id") or {}).get("value", [])}
                 if u["id"] not in owners:
                     g.call("POST", f"{kind}/{oid}/owners/$ref",
                            {"@odata.id": f"https://graph.microsoft.com/v1.0/directoryObjects/{u['id']}"})
@@ -232,7 +252,7 @@ def main():
         if live:
             print(f"SECRET: existing '{SECRET_LABEL}' valid to {live[0]['endDateTime'][:10]} (value unretrievable — pack already has it, or mint fresh)")
         else:
-            end = (datetime.now(timezone.utc) + timedelta(days=30 * a.secret_months)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            end = add_months(datetime.now(timezone.utc), a.secret_months).strftime("%Y-%m-%dT%H:%M:%SZ")
             r = g.call("POST", f"applications/{app_id}/addPassword",
                        {"passwordCredential": {"displayName": SECRET_LABEL, "endDateTime": end}})
             if a.apply:
@@ -242,11 +262,14 @@ def main():
     org_tenant = tenant if not a.apply else g.get("organization?$select=id")["value"][0]["id"]
     out = {"ENTRA_TENANT_ID": org_tenant, "ENTRA_CLIENT_ID": client_id}
     if secret:
-        out |= {"ENTRA_CLIENT_SECRET": secret, "ENTRA_SECRET_EXPIRES": expires[:10]}
+        out["ENTRA_CLIENT_SECRET"] = secret
     if a.pack and a.apply:
         write_pack(a.pack, out)
         print(f"\nPACK UPDATED: {a.pack} ← {' '.join(out)}  (secret went straight into the pack — it is shown nowhere else;"
-              f"\n  vault it per HANDOFF-TO-HUDU and put the expiry in STATE.md's credential table)")
+              f"\n  vault it per HANDOFF-TO-HUDU)")
+        if expires:
+            print(f"  Secret expires {expires[:10]} — the standard 12-month lifetime, so NO *_EXPIRES pack field (#17);"
+                  f"\n  just confirm the pack's CREDENTIALS_MINTED is set: STATE.md's one minted date covers this too.")
     else:
         print("\n======== VALUES (secret shows ONCE — pack .env + vault, never a ticket/note/email) ========")
         for k, v in out.items():

@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-08-30 — Entra SSO registration becomes a build step (#22)
+
+- **`templates/entra-sso/provision-sso.py`** — python port of
+  `New-ClientSSO.ps1` for the terminal seat, so the `<code>-sso` registration
+  stops being operator homework: stdlib only (no PowerShell, no Graph module
+  installs), device-code relay built in (az-cli first-party client,
+  `.default` scopes, tenant-pinned, polling the FULL ~15-min window — the old
+  two-step `get-graph-token-devicecode.sh` → `-UseEnvToken` hop and the SDK's
+  ~120s trap both disappear). It prints ONE sign-in link and the engineer
+  opens it from their own device — admin credentials still never touch the
+  box. Dry-run by default; `--pack` reads `CLIENT_CODE`/`TEAM_DOMAIN`/
+  `AIOPS_UPN` and on `--apply` writes `ENTRA_*` straight back, so the secret
+  never transits another machine.
+- **Idempotent by construction** — "ONE registration per client, ever" is now
+  enforced rather than asked for: a re-run extends the existing object (adds
+  the real redirect URI once `TEAM_DOMAIN` exists, widens a grant, adds the
+  owner, re-mints only a dead secret) instead of refusing or duplicating.
+- **Moved into `PLATFORM-BUILD.md` step 3** — minting happens where
+  `TEAM_DOMAIN` is already real, which removes the #18 guessed-redirect
+  failure by sequencing instead of by warning. `--defer-redirect` is the
+  explicit opt-in for creating before Zero Trust exists; without a team
+  domain the script refuses and cites AADSTS50011. `New-ClientSSO.ps1` stays
+  for the engineer's-own-machine path and the external-IT one-pager.
+- **Follows #17's one-lifetime rule**: no `ENTRA_SECRET_EXPIRES` pack field —
+  the secret takes the standard 12-month lifetime (real calendar months) that
+  `CREDENTIALS_MINTED` already carries.
+- `templates/entra-sso/test-provision-sso.py` — stdlib self-test (fake Graph,
+  no tenant) covering the refusal, dry-run purity, pack round-trip, grant
+  scoping, idempotency and the missing-mailbox path.
+- **Not yet field-run.** First `--apply` goes against a tenant we control;
+  fix-forward from there.
+
 ## 2026-08-28 — engagement-kit hardening (#16, #17, #18)
 
 - **Scheduling contract** (#16): droplets (always-on) schedule with cron;

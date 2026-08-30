@@ -126,7 +126,10 @@ why in the module header.
    comment when justified). For anything under `windows/`, the equivalent
    check is a PowerShell parse (there's no PowerShell on the dev box):
    `docker run --rm -v "$PWD:/repo:ro" mcr.microsoft.com/powershell:latest pwsh -NoProfile -Command "…Parser]::ParseFile(…)"`
-   — see the 2026-07-31 plan for the full command.
+   — see the 2026-07-31 plan for the full command. For the templates' python
+   (`templates/entra-sso/provision-sso.py`) the equivalent is its stdlib
+   self-test — no tenant, no network:
+   `python3 templates/entra-sso/test-provision-sso.py`
 6. Smoke: `./bootstrap.sh --list` and `--help`.
 7. Commit, push. Machines pick it up with
    `git -C ~/claude-terminal pull && ~/claude-terminal/bootstrap.sh`.
