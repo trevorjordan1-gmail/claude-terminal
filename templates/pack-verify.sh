@@ -49,10 +49,18 @@ esac
 [ -n "${CREDENTIALS_MINTED:-}" ] || echo "  (note: CREDENTIALS_MINTED empty — one date, set at the accounts pass; every mintable credential expires ≈ +12 months from it)"
 [ -n "${CF_TOKEN_ID:-}" ] || echo "  (note: CF_TOKEN_ID empty — the revocation identifier; only on screen at mint time)"
 for v in CLIENT_LOCATION CLIENT_STAFF_DOMAIN CLIENT_ALERT_EMAILS ADNET_ALERTS_MAILBOX \
-         ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_CLIENT_SECRET GITHUB_CLASSIC \
-         AIOPS_UPN; do
+         ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_CLIENT_SECRET ENTRA_ADMIN_DOMAIN \
+         GITHUB_CLASSIC AIOPS_UPN; do
   [ -n "${!v:-}" ] || echo "  (note: $v empty — the platform build will need a judgment call or fallback)"
 done
+# AIOPS_TOTP_SEED (#24): the aiops second factor lives in the pack because the
+# exporter runs UNATTENDED and the alternative — a Conditional Access policy
+# exempting the account by IP — was weighed and declined. Hudu stays root of
+# trust; the pack copy is a working copy, and it is credential-grade: rotating
+# it means re-enrolling the authenticator, so it belongs in the same rotation
+# story as the secrets beside it.
+[ -n "${AIOPS_TOTP_SEED:-}" ] || echo "  (note: AIOPS_TOTP_SEED empty — unattended aiops sign-in needs it; vault it in Hudu too)"
+[ -n "${APPLIANCE_HOST:-}" ] || echo "  (note: APPLIANCE_HOST empty — no appliance /settings redirect URI will be registered; NEVER derive it from a staff domain, #18)"
 # TEAM_DOMAIN gets its own louder note (#18): Cloudflare AUTO-GENERATES the ZT
 # team domain, so a missing value cannot be guessed — deriving it from
 # CLIENT_CODE is exactly the AADSTS50011 field failure.

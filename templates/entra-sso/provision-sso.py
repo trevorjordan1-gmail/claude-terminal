@@ -16,6 +16,14 @@ What one --apply run ensures (same object model as New-ClientSSO.ps1):
   * The aiops MAIL RIDER: Mail.Read/ReadWrite/Send consented for the aiops PRINCIPAL ONLY —
     no other mailbox is reachable through this app, by construction. aiops added as owner of
     app + SP (object-scoped power, no directory roles).
+  * OPTIONALLY (--exporter-mail) the Graph APPLICATION role Mail.Read is DECLARED on the
+    registration so the appliance's one-click adminconsent has something to grant — no
+    second Global-Admin sitting just to add the role. Declaring grants NOTHING on its own;
+    an admin must still consent. READ THE WARNING THE FLAG PRINTS: an Entra-consented app
+    role is TENANT-WIDE mailbox read until an Exchange application access policy scopes it,
+    that policy takes >1h to take effect, and Microsoft has deprecated app access policies
+    in favour of Exchange RBAC for Applications (which does NOT scope Entra-consented
+    permissions — the two are a union — so this design has a migration ahead of it).
   * A secret labeled `cloudflare-access` (12 months) IF none is live — printed once, and with
     --pack written straight into the pack (never transits another machine).
 
@@ -35,9 +43,12 @@ Usage (on the terminal, from the workspace):
   python3 provision-sso.py --tenant <tenant-id-or-domain> --code acme \
       --team <real-zt-team-prefix> --aiops aiops@acme-example.com [--apply]
 
---pack reads CLIENT_CODE, TEAM_DOMAIN, AIOPS_UPN, ENTRA_TENANT_ID (tenant fallback: the
-aiops UPN's domain) and, on --apply, writes ENTRA_TENANT_ID / ENTRA_CLIENT_ID /
-ENTRA_CLIENT_SECRET back into the same file (mode preserved). There is deliberately NO
+--pack reads CLIENT_CODE, TEAM_DOMAIN, AIOPS_UPN, ENTRA_TENANT_ID, APPLIANCE_HOST,
+EXPORTER_MAIL (tenant fallback: the aiops UPN's domain) and, on --apply, writes
+ENTRA_TENANT_ID / ENTRA_CLIENT_ID / ENTRA_CLIENT_SECRET / ENTRA_ADMIN_DOMAIN back into the
+same file (mode preserved). ENTRA_ADMIN_DOMAIN is the tenant's initial
+`<slug>.onmicrosoft.com`, read from Graph while the GA token is in hand so Zero Trust
+policy defaults (staff domain + admin domain) are never left half-built. There is deliberately NO
 per-credential expiry field (#17): the Entra secret takes the operator-standard 12-month
 lifetime like every other mintable credential, so the pack's ONE `CREDENTIALS_MINTED` date
 and STATE.md's single minted line already carry it.
@@ -64,6 +75,21 @@ def add_months(dt, months):
                       day=min(dt.day, [31, 29 if leap else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]))
 
 
+def truthy(v):
+    return str(v or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def settings_uri(host):
+    """The appliance's post-consent landing page. Takes a bare host or a full URL; never
+    derived from another field — a guessed host is the #18 failure in a new costume."""
+    if not host:
+        return None
+    h = host.strip().rstrip("/")
+    if not h.startswith(("http://", "https://")):
+        h = "https://" + h
+    return h + "/settings"
+
+
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--pack", help="path to the workspace .env — reads CLIENT_CODE/TEAM_DOMAIN/AIOPS_UPN, writes ENTRA_* back on --apply")
@@ -73,6 +99,14 @@ def parse_args():
     p.add_argument("--aiops", help="aiops UPN for the mail rider + owner (default: pack AIOPS_UPN; omit with --no-aiops)")
     p.add_argument("--no-aiops", action="store_true", help="skip the mail rider/owner (retrofit later with Grant-AiopsMail.ps1)")
     p.add_argument("--defer-redirect", action="store_true", help="EXPLICIT opt-in to create with no redirect URI (Zero Trust not bootstrapped yet); re-run later with --team")
+    p.add_argument("--exporter-mail", action="store_true",
+                   help="also DECLARE the Graph application role Mail.Read (default: pack EXPORTER_MAIL). "
+                        "Declares only — an admin still consents. TENANT-WIDE until an Exchange "
+                        "application access policy scopes it to the one mailbox.")
+    p.add_argument("--appliance-host",
+                   help="appliance host or URL whose /settings page is registered as a SECOND redirect URI, "
+                        "so the post-consent Accept lands back there instead of the Access callback "
+                        "(default: pack APPLIANCE_HOST). Never derived — see ENTRA-SSO.md.")
     p.add_argument("--secret-months", type=int, default=12)
     p.add_argument("--no-secret", action="store_true")
     p.add_argument("--apply", action="store_true", help="write; default is dry-run")
@@ -158,6 +192,8 @@ def main():
     pack = read_pack(a.pack) if a.pack else {}
     code = a.code or pack.get("CLIENT_CODE") or sys.exit("--code (or pack CLIENT_CODE) required")
     team = a.team or pack.get("TEAM_DOMAIN")
+    exporter = a.exporter_mail or truthy(pack.get("EXPORTER_MAIL"))
+    appliance = a.appliance_host or pack.get("APPLIANCE_HOST")
     aiops_upn = None if a.no_aiops else (a.aiops or pack.get("AIOPS_UPN"))
     tenant = a.tenant or pack.get("ENTRA_TENANT_ID") or (aiops_upn.split("@")[1] if aiops_upn else None) \
         or sys.exit("--tenant required (no pack ENTRA_TENANT_ID / AIOPS_UPN to derive it from)")
@@ -166,13 +202,25 @@ def main():
                  "staff sign-in (AADSTS50011). Zero Trust not bootstrapped yet? pass --defer-redirect and re-run later.")
     name = f"{code}-sso"
     redirect = f"https://{team}.cloudflareaccess.com/cdn-cgi/access/callback" if team else None
+    redirects = [u for u in (redirect, settings_uri(appliance)) if u]
 
     g = Graph(device_token(tenant), a.apply)
     print(f"== {name} · tenant {tenant} · {'APPLY' if a.apply else 'DRY-RUN (add --apply to write)'} ==")
     graph_sp = g.get(f"servicePrincipals?$filter=appId eq '{GRAPH_APPID}'&$select=id,appId,appRoles,oauth2PermissionScopes")["value"][0]
     scope_id = {s["value"]: s["id"] for s in graph_sp["oauth2PermissionScopes"]}
-    rra = [{"resourceAppId": GRAPH_APPID,
-            "resourceAccess": [{"id": scope_id[v], "type": "Scope"} for v in SIGNIN + MAIL]}]
+    access = [{"id": scope_id[v], "type": "Scope"} for v in SIGNIN + MAIL]
+    if exporter:
+        role_id = {r["value"]: r["id"] for r in graph_sp.get("appRoles", [])}
+        if "Mail.Read" not in role_id:
+            sys.exit("Graph exposes no Mail.Read application role in this tenant — cannot honour --exporter-mail")
+        access.append({"id": role_id["Mail.Read"], "type": "Role"})
+        print("  ⚠ --exporter-mail: DECLARING the application role Mail.Read (nothing is granted until an\n"
+              "    admin consents). Once consented it is TENANT-WIDE mailbox read. Scope it to the one\n"
+              "    mailbox with an Exchange application access policy, and know that the policy takes\n"
+              "    OVER AN HOUR to take effect — that gap is live, unscoped access. App access policies\n"
+              "    are deprecated in favour of Exchange RBAC, which cannot scope an Entra-consented\n"
+              "    permission (the two are a union), so plan the migration.")
+    rra = [{"resourceAppId": GRAPH_APPID, "resourceAccess": access}]
 
     # 1 — registration: ONE per client, ever → extend, never duplicate
     hit = g.get(f"applications?$filter=displayName eq '{name}'&$select=id,appId,web,requiredResourceAccess,isFallbackPublicClient")["value"]
@@ -181,8 +229,9 @@ def main():
         print(f"EXISTS (appId {client_id}) — extending only what is missing")
         patch = {}
         uris = app.get("web", {}).get("redirectUris", [])
-        if redirect and redirect not in uris:
-            patch["web"] = {"redirectUris": uris + [redirect]}
+        missing = [u for u in redirects if u not in uris]
+        if missing:
+            patch["web"] = {"redirectUris": uris + missing}
         have = {x["id"] for r in app.get("requiredResourceAccess", []) for x in r.get("resourceAccess", [])}
         if any(x["id"] not in have for x in rra[0]["resourceAccess"]):
             patch["requiredResourceAccess"] = rra
@@ -194,7 +243,7 @@ def main():
     else:
         r = g.call("POST", "applications",
                    {"displayName": name, "signInAudience": "AzureADMyOrg", "isFallbackPublicClient": True,
-                    "web": {"redirectUris": [redirect] if redirect else []}, "requiredResourceAccess": rra})
+                    "web": {"redirectUris": redirects}, "requiredResourceAccess": rra})
         app_id, client_id = r.get("id", "(dry-run)"), r.get("appId", "(dry-run)")
         print(f"CREATED → appId {client_id}")
     if not redirect:
@@ -259,8 +308,19 @@ def main():
                 secret, expires = r["secretText"], end
 
     # 4 — hand-back
-    org_tenant = tenant if not a.apply else g.get("organization?$select=id")["value"][0]["id"]
+    admin_domain = pack.get("ENTRA_ADMIN_DOMAIN")
+    if a.apply:
+        org = g.get("organization?$select=id,verifiedDomains")["value"][0]
+        org_tenant = org["id"]
+        # the initial <slug>.onmicrosoft.com — Zero Trust policies need staff domain AND
+        # admin domain, and this is the one moment a GA token is in hand to read it
+        admin_domain = next((d["name"] for d in org.get("verifiedDomains", [])
+                             if d.get("isInitial")), None) or admin_domain
+    else:
+        org_tenant = tenant
     out = {"ENTRA_TENANT_ID": org_tenant, "ENTRA_CLIENT_ID": client_id}
+    if admin_domain:
+        out["ENTRA_ADMIN_DOMAIN"] = admin_domain
     if secret:
         out["ENTRA_CLIENT_SECRET"] = secret
     if a.pack and a.apply:
