@@ -76,7 +76,8 @@ def default_permissions() -> str:
     return "[permissions]\n%owner% allow builtin\n" + "\n".join(_profile_rules()) + "\n"
 
 
-def create_session(name: str, owner: str, permissions: str | None = None) -> dict:
+def create_session(name: str, owner: str, permissions: str | None = None,
+                   requirements: str | None = None) -> dict:
     req: dict = {
         "Name": name,
         "Owner": owner,
@@ -86,6 +87,11 @@ def create_session(name: str, owner: str, permissions: str | None = None) -> dic
         "StorageRoot": "%home%",
         "PermissionsFile": base64.b64encode((permissions or default_permissions()).encode()).decode(),
     }
+    if requirements:
+        # e.g. "server:Host.Aws.Ec2InstanceId = 'i-...'": without this the
+        # broker places the session on ANY available server, which is wrong
+        # whenever one owner spans machines (build boxes all run as 'build')
+        req["Requirements"] = requirements
     with _client() as c:
         r = c.post("/createSessions", json=[req], headers=_headers())
         r.raise_for_status()

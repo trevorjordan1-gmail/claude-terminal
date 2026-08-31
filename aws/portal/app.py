@@ -411,27 +411,56 @@ def power(request: Request, instance_id: str, action: str):
 
 # ---------- connect (owner) ----------
 
-def _ensure_session(owner_local: str) -> dict:
+def _session_on_host(s: dict, private_ip: str) -> bool:
+    """Whether a broker session lives on the machine with this private IP.
+    Owner alone cannot identify a session: every build box runs as the fixed
+    'build' user, so two running build boxes have same-owner sessions and an
+    owner-only lookup connects everyone to whichever box answered first."""
+    if not private_ip:
+        return False
+    srv = s.get("Server") or {}
+    return (srv.get("Ip") == private_ip
+            or srv.get("Hostname") == "ip-" + private_ip.replace(".", "-"))
+
+
+def _ensure_session(owner_local: str, machine: dict) -> dict:
+    """A READY session for this owner ON THIS MACHINE — never a same-owner
+    session on a sibling box."""
+    ip = machine.get("private_ip") or ""
+    if not ip:
+        # No host IP means no session can be matched to THIS machine. Without
+        # this guard the wait loop below spins its full 90s and then blames the
+        # DCV service, which is both slow and wrong. connect() tolerates a
+        # missing private_ip (a machine still coming up), so this is reachable.
+        raise HTTPException(
+            409, "this terminal has no private IP yet — it is still coming up. "
+                 "Try Connect again in a moment.")
     sessions = broker.describe_sessions(owner=owner_local)
     for s in sessions:
-        if s.get("State") == "READY":
+        if s.get("State") == "READY" and _session_on_host(s, ip):
             return s
-    # don't double-create while one is still being born
-    if not any(s.get("State") == "CREATING" for s in sessions):
+    # don't double-create while one is still being born here (a CREATING
+    # session with no Server yet is still being placed — assume it's ours)
+    if not any(s.get("State") == "CREATING"
+               and (_session_on_host(s, ip) or not s.get("Server"))
+               for s in sessions):
         # the broker's availability view can lag the desktop by ~30-90s after
         # a boot/close — absorb that window instead of erroring at the user
         for attempt in range(6):
             try:
-                broker.create_session(name=f"{owner_local}-desktop", owner=owner_local)
+                broker.create_session(
+                    name=f"{owner_local}-desktop", owner=owner_local,
+                    requirements=f"server:Host.Aws.Ec2InstanceId = '{machine['id']}'")
                 break
             except RuntimeError as e:
-                if "No DCV server found" not in str(e) or attempt == 5:
+                msg = str(e).lower()
+                if ("no dcv server" not in msg and "requirement" not in msg) or attempt == 5:
                     raise
                 time.sleep(5)
     for _ in range(45):
         time.sleep(2)
         for s in broker.describe_sessions(owner=owner_local):
-            if s.get("State") == "READY":
+            if s.get("State") == "READY" and _session_on_host(s, ip):
                 return s
     raise HTTPException(
         504,
@@ -483,7 +512,7 @@ def connect(request: Request, instance_id: str):
     # have a fixed shared session user that no UPN maps to
     owner_local = m["local_user"]
     try:
-        session = _ensure_session(owner_local)
+        session = _ensure_session(owner_local, m)
         aws_ec2.force_display_layout(m["id"], session["Id"])
         dcv_url, dcv_file = _connect_response(session["Id"], owner_local)
     except HTTPException as e:
@@ -506,7 +535,8 @@ def share(request: Request, instance_id: str,
     m = _authz_machine(user, instance_id)  # owner, group member, or admin
     owner_local = m["local_user"]
     sessions = [s for s in broker.describe_sessions(owner=owner_local)
-                if s.get("State") == "READY"]
+                if s.get("State") == "READY"
+                and _session_on_host(s, m.get("private_ip") or "")]
     if not sessions:
         raise HTTPException(409, "no active session to share — connect first")
     sid = sessions[0]["Id"]
@@ -543,9 +573,16 @@ def join(request: Request, session_id: str):
         # admins self-grant full control (recorded so revoke works)
         for s in broker.describe_sessions():
             if s.get("Id") == session_id:
+                # match the session's host, not its owner — build boxes all
+                # share the 'build' owner, so owner alone is ambiguous
                 owner_machine = next(
                     (m for m in aws_ec2.list_desktops()
-                     if m["local_user"] == s.get("Owner") and m["state"] == "running"), None)
+                     if m["state"] == "running"
+                     and _session_on_host(s, m.get("private_ip") or "")), None)
+                if owner_machine is None:
+                    owner_machine = next(
+                        (m for m in aws_ec2.list_desktops()
+                         if m["local_user"] == s.get("Owner") and m["state"] == "running"), None)
                 if owner_machine:
                     aws_ec2.ensure_os_user(owner_machine["id"], my_local)
                 grants = _grants.setdefault(session_id, {})
@@ -700,10 +737,13 @@ def admin_remove(request: Request, instance_id: str):
     m = machines.get(instance_id)
     if not m:
         raise HTTPException(404, "unknown terminal")
-    # best effort: tear down the user's broker sessions first
+    # best effort: tear down this machine's broker sessions first — filtered
+    # by host, not just owner: removing one build box must not delete the
+    # sessions of its sibling boxes (all owned by 'build')
     try:
         for s in broker.describe_sessions(owner=m["local_user"]):
-            if s.get("State") in ("READY", "CREATING"):
+            if (s.get("State") in ("READY", "CREATING")
+                    and _session_on_host(s, m.get("private_ip") or "")):
                 broker.delete_session(s["Id"], m["local_user"])
     except Exception:
         pass
