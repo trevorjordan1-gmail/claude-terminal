@@ -147,6 +147,22 @@ If you're expecting your own terminal, ask your admin.</p>
       document.querySelectorAll("button").forEach(x => x.disabled = true);
     }, 0);
   }));
+
+  // stale-state guard: states render at request time, so a tab left open
+  // shows yesterday's truth (a hibernated box still said Running). Reload
+  // when the tab comes back into view after being away, and every 5 minutes
+  // regardless — but never mid-typing, and never with the ?did= banner qs
+  // (that would re-suppress actions forever).
+  const born = Date.now();
+  const typing = () => document.activeElement &&
+    ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName);
+  const stale = () => Date.now() - born > 30000;
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && stale() && !typing()) location.replace(location.pathname);
+  });
+  setInterval(() => {
+    if (!document.hidden && !typing()) location.replace(location.pathname);
+  }, 300000);
 </script>
 
 {% endblock %}

@@ -169,13 +169,16 @@ sed 's|Exec=/usr/bin/google-chrome-stable|Exec=/usr/bin/google-chrome-stable --d
   /usr/share/applications/google-chrome.desktop > /usr/local/share/applications/google-chrome.desktop
 
 # warm start: the browser's launch burst happens during session creation,
-# before the user has even connected — clicking the dock icon is instant
+# before the user has even connected — clicking the dock icon is instant.
+# --no-startup-window, not --start-minimized: GNOME ignores minimize hints,
+# so the warm window sat in the user's face on every fresh session (TJ
+# 2026-08-31). No window at all is the point — the process still warms.
 cat > /etc/xdg/autostart/cct-chrome-warm.desktop <<'DESKTOP'
 [Desktop Entry]
 Type=Application
 Name=Chrome (warm start)
-Comment=Opens the browser at sign-in so it is already warm
-Exec=/usr/bin/google-chrome-stable --disable-smooth-scrolling --force-prefers-reduced-motion --renderer-process-limit=2 --password-store=basic --start-minimized
+Comment=Warms the browser at sign-in without opening a window
+Exec=/usr/bin/google-chrome-stable --disable-smooth-scrolling --force-prefers-reduced-motion --renderer-process-limit=2 --password-store=basic --no-startup-window
 OnlyShowIn=GNOME;
 X-GNOME-Autostart-Delay=2
 DESKTOP

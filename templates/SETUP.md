@@ -52,7 +52,12 @@ Then, in order:
    the staging copy must not remain. Remind the engineer to delete the Notepad++ scratch.
 3. **Launcher:** install `templates/cc-launcher.sh` → `~/.local/bin/cc-launcher` (0755) and
    point the `cc` alias in `~/.bashrc`'s claude-terminal block at it (keep `phonecc` = tmux
-   wrapper around the same). Log this in `~/Projects/os-changes/README.md` (new top row).
+   wrapper around the same). Install `templates/cc-statusline.sh` →
+   `~/.local/bin/cc-statusline` (0755) alongside it, and add a `statusLine` command entry to
+   `~/.claude/settings.json` pointing at it — **only if the user has none**, never clobber
+   one. (`modules/core/10-claude-code.sh` does both on DCV boxes; this step is the manual
+   equivalent and must not drift from it.) Log this in `~/Projects/os-changes/README.md`
+   (new top row).
 4. **Git + GitHub (machine identity — a NON-NEGOTIABLE):**
    - `git init` the platform folder; set `user.name`/`user.email` to the builder (local).
    - Local credential helper that feeds the machine token from the environment at push

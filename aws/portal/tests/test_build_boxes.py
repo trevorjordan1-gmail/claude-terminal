@@ -216,6 +216,69 @@ def test_admin_remove_spares_sibling_build_box_sessions(monkeypatch):
     assert deleted == ["sess-victim"], deleted
 
 
+def test_ensure_session_clears_zombie_unknown(monkeypatch):
+    """A session stuck UNKNOWN on an up-and-AVAILABLE box (e.g. dcvserver
+    restarted underneath it) used to wedge Connect forever. It gets ~30s to
+    recover, is then force-deleted, and a fresh pinned session is created."""
+    import broker
+    zombie = {**_sess("sess-zombie", "10.0.1.20"), "State": "UNKNOWN"}
+    fresh = _sess("sess-fresh", "10.0.1.20")
+    deleted, created = {}, {}
+
+    def fake_describe(owner=None):
+        if deleted:
+            return [fresh] if created else []
+        return [zombie]
+
+    monkeypatch.setattr(broker, "describe_sessions", fake_describe)
+    monkeypatch.setattr(broker, "delete_session",
+                        lambda sid, owner, force=False: deleted.update(sid=sid, force=force))
+    monkeypatch.setattr(broker, "create_session",
+                        lambda name, owner, permissions=None, requirements=None:
+                        created.update(req=requirements))
+    monkeypatch.setattr(app.time, "sleep", lambda s: None)
+    session = app._ensure_session("build", {"id": "i-clientb", "private_ip": "10.0.1.20"})
+    assert deleted == {"sid": "sess-zombie", "force": True}
+    assert session["Id"] == "sess-fresh"
+
+
+def test_ensure_session_waits_for_zombie_recovery(monkeypatch):
+    """If the agent re-reports the UNKNOWN session within the grace window
+    (normal after a wake), it is used as-is — the user's apps survive."""
+    import broker
+    zombie = {**_sess("sess-z", "10.0.1.20"), "State": "UNKNOWN"}
+    calls = {"n": 0}
+
+    def fake_describe(owner=None):
+        calls["n"] += 1
+        if calls["n"] >= 3:
+            return [_sess("sess-z", "10.0.1.20")]  # recovered to READY
+        return [zombie]
+
+    monkeypatch.setattr(broker, "describe_sessions", fake_describe)
+    monkeypatch.setattr(broker, "delete_session",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not delete")))
+    monkeypatch.setattr(broker, "create_session",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not create")))
+    monkeypatch.setattr(app.time, "sleep", lambda s: None)
+    session = app._ensure_session("build", {"id": "i-clientb", "private_ip": "10.0.1.20"})
+    assert session["Id"] == "sess-z" and session["State"] == "READY"
+
+
+# ---------- vanity gateway host (terminal name in the client title bar) ----------
+
+def test_gateway_host_vanity(monkeypatch):
+    """With ASP_GW_VANITY on, the connect host is <terminal>.<zone> so the
+    native client's title names the terminal; off (the default), it is the
+    plain gateway for every terminal."""
+    assert config.gateway_host("clientb-build01") == config.GATEWAY_HOST  # default off
+    monkeypatch.setattr(config, "GATEWAY_VANITY", True)
+    assert config.gateway_host("clientb-build01") == "clientb-build01.terminals.example.com"
+    assert config.gateway_host("") == config.GATEWAY_HOST              # no label
+    # hostile label chars never reach DNS
+    assert config.gateway_host("Evil.Host/../x") == "evilhostx.terminals.example.com"
+
+
 def test_build_box_route_dormant():
     """Route 403s even for group members when the feature is unconfigured —
     a customer tenant cannot reach provisioning no matter the token claims."""

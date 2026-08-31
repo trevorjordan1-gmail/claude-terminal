@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Connecting…</h2>
+<h2>Connecting{% if machine_name %} — {{ machine_name }}{% endif %}…</h2>
 <div class="card">
   <div class="meta">
-    <div class="name">Launching the DCV client</div>
+    <div class="name">Launching the DCV client{% if machine_name %} for {{ machine_name }}{% endif %}</div>
     <div class="sub">If nothing happens in a few seconds, the client may not be
     installed — use the buttons below.</div>
   </div>
   <a class="btn" href="{{ dcv_url }}">Open again</a>
-  <a class="btn" href="/dcvfile/{{ session_id }}/{{ connect_user }}"
+  <a class="btn" href="/dcvfile/{{ session_id }}/{{ connect_user }}{% if machine_name %}?label={{ machine_name }}{% endif %}"
      style="background:transparent;border:1px solid var(--line);color:var(--muted)">Download .dcv file</a>
 </div>
 <div class="card" id="fallback" style="display:none">
@@ -18,13 +18,24 @@
   </div>
   <a class="btn" href="/downloads">Get the client (latest)</a>
 </div>
-<p class="note"><a href="/">&larr; back to your terminals</a></p>
+<p class="note" id="back"><a href="/">&larr; back to your terminals</a></p>
 <script>
   // hand off to the native client; if the page is still focused shortly after,
   // assume the protocol handler is missing and surface the download card
   window.location.href = {{ dcv_url | tojson }};
+  // losing focus/visibility right after the handoff means the client took
+  // over — the launch worked, so head back to the terminals page instead of
+  // parking here forever. No signal = likely no client: keep the buttons up.
   let blurred = false;
-  window.addEventListener("blur", () => blurred = true);
+  const launched = () => {
+    if (blurred) return;
+    blurred = true;
+    document.getElementById("back").innerHTML =
+      "Client launched — heading back to your terminals…";
+    setTimeout(() => window.location.replace("/"), 3000);
+  };
+  window.addEventListener("blur", launched);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) launched(); });
   setTimeout(() => { if (!blurred) document.getElementById("fallback").style.display = "flex"; }, 2500);
 </script>
 {% endblock %}

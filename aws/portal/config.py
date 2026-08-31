@@ -29,6 +29,21 @@ AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 PORTAL_HOST = _c["ASP_PORTAL_HOST"]          # portal.terminals.<your-zone>
 GATEWAY_HOST = _c["ASP_GW_HOST"]             # gw.terminals.<your-zone>
 GATEWAY_PORT = int(_c.get("ASP_GW_PORT", "8443"))
+# vanity gateway aliases: <terminal>.<zone> resolves to the same gateway
+# (wildcard DNS record + wildcard cert SAN, see cp-tls.sh) purely so the
+# native client's TITLE BAR names the terminal — the client titles windows
+# by connect host and the .dcv format has no title key. Off unless the
+# tenant's DNS+cert carry the wildcard.
+GATEWAY_VANITY = _c.get("ASP_GW_VANITY", "false").lower() == "true"
+
+
+def gateway_host(label: str = "") -> str:
+    """The host the client should connect to — a per-terminal alias when
+    vanity naming is on and a safe label is given, else the plain gateway."""
+    label = re.sub(r"[^a-z0-9-]", "", (label or "").lower())
+    if GATEWAY_VANITY and label:
+        return f"{label}.{GATEWAY_HOST.split('.', 1)[1]}"
+    return GATEWAY_HOST
 REGION = _c.get("ASP_REGION", "us-east-2")
 CUSTOMER = _c.get("ASP_CUSTOMER", "customer")
 
