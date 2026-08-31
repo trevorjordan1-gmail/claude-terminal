@@ -31,6 +31,19 @@ service-token probe ever exercises this redirect.
   ```
   python3 ~/claude-terminal/templates/entra-sso/provision-sso.py --pack ~/Projects/<code>.tools/.env [--apply]
   ```
+  Two optional extras, both OFF unless asked for (#24). `--exporter-mail` (or pack
+  `EXPORTER_MAIL=true`) additionally **declares** the Graph *application* role `Mail.Read`
+  so the appliance's one-click adminconsent has something to grant — no second Global-Admin
+  sitting just to add the role. Declaring grants nothing; an admin still consents, and once
+  they do it is **tenant-wide mailbox read** until an Exchange application access policy
+  scopes it to the one mailbox — that policy takes over an hour to take effect, and app
+  access policies are deprecated in favour of Exchange RBAC, which cannot scope an
+  Entra-consented permission (they are a union). `--appliance-host` (or pack
+  `APPLIANCE_HOST`) registers `https://<host>/settings` as a SECOND redirect URI so the
+  post-consent Accept lands back on the appliance instead of the Access callback's
+  "Invalid login session" page. It is never derived from another field — a guessed host is
+  the #18 failure in a new costume.
+
   `provision-sso.py` is the python port of New-ClientSSO.ps1 for exactly this seat: no
   PowerShell or module installs, **idempotent** (re-runs extend the one registration —
   add the redirect URI once `TEAM_DOMAIN` exists, re-mint an expired secret — instead of

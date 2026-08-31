@@ -51,10 +51,14 @@ def fake_urlopen(req,*a,**k):
     if "devicecode" in url: return R(json.dumps({"user_code":"ABCD-1234","device_code":"dc","verification_uri":"https://microsoft.com/devicelogin","expires_in":900,"interval":0}).encode())
     if url.endswith("/token"): return R(json.dumps({"access_token":"tok"}).encode())
     STATE["calls"].append(f"{meth} {urllib.parse.unquote(url.split('/v1.0/')[1])}")
+    if meth == "PATCH":
+        STATE.setdefault("patches", []).append(body)
     q=urllib.parse.unquote(url.split("/v1.0/")[1])
     def ok(d): return R(json.dumps(d).encode())
     if q.startswith("servicePrincipals?$filter=appId eq '00000003"):
-        return ok({"value":[{"id":"graphsp","appId":m.GRAPH_APPID,"oauth2PermissionScopes":[{"value":v,"id":f"sid-{v}"} for v in m.SIGNIN+m.MAIL]}]})
+        return ok({"value":[{"id":"graphsp","appId":m.GRAPH_APPID,
+                            "oauth2PermissionScopes":[{"value":v,"id":f"sid-{v}"} for v in m.SIGNIN+m.MAIL],
+                            "appRoles":[{"value":v,"id":f"rid-{v}"} for v in ("Mail.Read","Mail.ReadWrite")]}]})
     if q.startswith("applications?$filter=displayName"): return ok({"value":STATE["apps"]})
     if q.startswith("servicePrincipals?$filter=appId"): return ok({"value":STATE["sps"]})
     if q.startswith("oauth2PermissionGrants?$filter"): return ok({"value":STATE["grants"]})
@@ -62,7 +66,10 @@ def fake_urlopen(req,*a,**k):
         if "missing@" in q: raise urllib.error.HTTPError(url,404,"Not Found",{},io.BytesIO(b'{"error":"nf"}'))
         return ok({"id":"aiops-oid"})
     if q.endswith("/owners?$select=id"): return ok({"value":[]})
-    if q=="organization?$select=id": return ok({"value":[{"id":"tenant-guid"}]})
+    if q.startswith("organization?$select=id"):
+        return ok({"value":[{"id":"tenant-guid","verifiedDomains":[
+            {"name":"acme-example.com","isInitial":False},
+            {"name":"acmeslug.onmicrosoft.com","isInitial":True}]}]})
     if q.startswith("applications/") and "$select=passwordCredentials" in q: return ok({"passwordCredentials":STATE.get("creds",[])})
     if meth=="POST" and q=="applications":
         STATE["apps"].append({"id":"app-oid","appId":"client-guid","web":{"redirectUris":body["web"]["redirectUris"]},"requiredResourceAccess":body["requiredResourceAccess"],"isFallbackPublicClient":True})
@@ -147,4 +154,66 @@ assert c==0, (c,out)
 assert "not found" in out and "SKIPPED" in out and "COMPLETE" in out, out
 assert m.read_pack(pk).get("ENTRA_CLIENT_ID")=="client-guid", "registration lost when mailbox absent"
 print("PASS missing aiops mailbox — registration completes + pack written, rider skipped with a re-run hint")
+# ---------- #24 ask 1: the application Mail.Read ROLE, declared only when asked ----------
+BASE='CLIENT_CODE=acme\nTEAM_DOMAIN=hidden-resonance-c421\nAIOPS_UPN=aiops@acme-example.com\n'
+CB="https://hidden-resonance-c421.cloudflareaccess.com/cdn-cgi/access/callback"
+
+def fresh(extra=""):
+    STATE.update({"apps":[],"sps":[],"grants":[],"calls":[],"creds":[],"patches":[]})
+    open(pk,"w").write(BASE+extra); os.chmod(pk,0o600)
+
+fresh()
+c,out=run(["--pack",pk,"--apply"])
+ra=STATE["apps"][0]["requiredResourceAccess"][0]["resourceAccess"]
+assert all(x["type"]=="Scope" for x in ra), ra
+print("PASS default — delegated scopes only, no application role declared")
+
+fresh()
+c,out=run(["--pack",pk,"--apply","--exporter-mail"])
+ra=STATE["apps"][0]["requiredResourceAccess"][0]["resourceAccess"]
+roles=[x for x in ra if x["type"]=="Role"]
+assert len(roles)==1 and roles[0]["id"]=="rid-Mail.Read", ra
+assert len([x for x in ra if x["type"]=="Scope"])==len(m.SIGNIN+m.MAIL), ra
+assert "TENANT-WIDE" in out and "OVER AN HOUR" in out and "union" in out, out
+print("PASS --exporter-mail — declares the Mail.Read ROLE beside the scopes, and warns loudly")
+
+fresh("EXPORTER_MAIL=true\n")
+c,out=run(["--pack",pk,"--apply"])
+assert any(x["type"]=="Role" for x in STATE["apps"][0]["requiredResourceAccess"][0]["resourceAccess"])
+print("PASS EXPORTER_MAIL in the pack drives the flag (engagement-typed, no CLI edit)")
+
+# ---------- #24 ask 2: the appliance /settings redirect URI ----------
+for host,want in (("adoptos.acme-example.com","https://adoptos.acme-example.com/settings"),
+                  ("https://adoptos.acme-example.com/","https://adoptos.acme-example.com/settings")):
+    fresh(f"APPLIANCE_HOST={host}\n")
+    c,out=run(["--pack",pk,"--apply"])
+    assert STATE["apps"][0]["web"]["redirectUris"]==[CB,want], STATE["apps"][0]["web"]
+print("PASS APPLIANCE_HOST — /settings registered as a SECOND redirect URI (bare host or full URL)")
+
+fresh("CLIENT_STAFF_DOMAIN=acme-example.com\n")
+c,out=run(["--pack",pk,"--apply"])
+assert STATE["apps"][0]["web"]["redirectUris"]==[CB], "invented an appliance host from another field (#18)"
+print("PASS no APPLIANCE_HOST — nothing is invented from the staff domain (#18)")
+
+# retrofit: an existing registration gains the /settings URI, keeps the callback
+STATE.update({"apps":[{"id":"app-oid","appId":"client-guid","web":{"redirectUris":[CB]},
+                       "requiredResourceAccess":[],"isFallbackPublicClient":True}],
+              "sps":[{"id":"sp-oid"}],"grants":[],"calls":[],"creds":[],"patches":[]})
+open(pk,"w").write(BASE+"APPLIANCE_HOST=adoptos.acme-example.com\n"); os.chmod(pk,0o600)
+c,out=run(["--pack",pk,"--apply"])
+uris=[b for b in STATE["patches"] if b and "web" in b][0]["web"]["redirectUris"]
+assert uris==[CB,"https://adoptos.acme-example.com/settings"], uris
+print("PASS retrofit — existing registration gains /settings without losing the Access callback")
+
+# ---------- #24 ask 3: ENTRA_ADMIN_DOMAIN captured while the GA token is in hand ----------
+fresh()
+c,out=run(["--pack",pk,"--apply"])
+got=m.read_pack(pk)
+assert got["ENTRA_ADMIN_DOMAIN"]=="acmeslug.onmicrosoft.com", got
+assert got["ENTRA_TENANT_ID"]=="tenant-guid"
+fresh()
+c,out=run(["--pack",pk])
+assert "ENTRA_ADMIN_DOMAIN" not in m.read_pack(pk), "dry-run wrote the admin domain"
+print("PASS ENTRA_ADMIN_DOMAIN — initial onmicrosoft.com read from Graph on --apply, not on dry-run")
+
 print("\nALL TESTS PASSED")

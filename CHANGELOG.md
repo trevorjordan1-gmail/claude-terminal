@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-08-31 — exporter consent, appliance redirect, two pack fields (#24)
+
+Follow-on to #22, from field use of the appliance's portal-managed exporter config.
+
+- **`--exporter-mail`** (or pack `EXPORTER_MAIL=true`, default off) additionally
+  **declares** the Graph *application* role `Mail.Read` on the registration, so
+  the appliance's one-click adminconsent link has something to grant. This
+  removes the manual step the field hit: a separate Global-Admin device-code
+  sitting whose only purpose was adding the role. Declaring grants nothing —
+  an admin still consents.
+  The flag prints a warning, and it is not decoration: once consented, an Entra
+  app role is **tenant-wide mailbox read** until an Exchange application access
+  policy scopes it to the one mailbox; that policy takes **over an hour** to
+  take effect; and app access policies are **deprecated** in favour of Exchange
+  RBAC, which cannot scope an Entra-consented permission — the two are a union,
+  so this design has a migration ahead of it.
+- **`--appliance-host`** (or pack `APPLIANCE_HOST`) registers
+  `https://<host>/settings` as a second web redirect URI, so the post-consent
+  Accept lands back on the appliance instead of the Access callback's "Invalid
+  login session" page. Accepts a bare host or a full URL, and is **never
+  derived** from another pack field — a guessed host is the #18 AADSTS50011
+  failure in a new costume.
+- **`ENTRA_ADMIN_DOMAIN`** is now captured automatically: the tenant's initial
+  `<slug>.onmicrosoft.com` is read from Graph on `--apply`, while the GA token
+  is in hand, and written back to the pack — so Zero Trust policy defaults
+  (staff domain + admin domain) are not left half-built. No human transcription.
+- **`AIOPS_TOTP_SEED`** is now a recognised pack field. The aiops second factor
+  lives in the pack because the exporter runs **unattended**; the alternative —
+  a Conditional Access policy exempting the account by IP — was weighed and
+  declined (operator decision). Hudu remains root of trust and `STATE.template`
+  says so; the pack holds a working copy, and it is credential-grade: rotating
+  it means re-enrolling the authenticator.
+- Self-test grows to 16 checks, including that the role is declared **only**
+  when asked, that nothing is invented when `APPLIANCE_HOST` is absent, and
+  that a retrofit adds `/settings` without dropping the Access callback.
+
 ## 2026-08-30 — root-owned `~/.config` broke user-level writes on new boxes
 
 Field report from a fresh DCV build box: `42-terminal-prefs` FAILED with

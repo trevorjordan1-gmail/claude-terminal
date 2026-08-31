@@ -57,7 +57,11 @@ blocked on whom.}}
 
 Pack lives ONLY in `./.env` (0600). Hudu "Ai Foundations" = root of trust (logins, TOTP
 seeds, backup codes, break-glass, both restic passwords — NOT regenerable). API keys are
-never vaulted — regenerable from the logins.
+never vaulted — regenerable from the logins. ONE exception, deliberate (#24): the aiops
+TOTP seed is ALSO carried in the pack as `AIOPS_TOTP_SEED`, because the mailbox exporter
+runs unattended and the alternative — a Conditional Access policy exempting the account
+by IP — was weighed and declined. Hudu remains root of trust; the pack holds a working
+copy, and rotating it means re-enrolling the authenticator.
 
 Minted {{CREDENTIALS_MINTED}} — every mintable credential (CF, DO, both GitHub PATs, the
 Entra secret) carries the operator-standard **12-month lifetime**, so all expiries ≈ the
