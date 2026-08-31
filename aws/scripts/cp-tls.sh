@@ -18,10 +18,46 @@ if [ ! -f /root/.secrets/cloudflare.ini ]; then
   ( umask 077 && printf 'dns_cloudflare_api_token = %s\n' "$TOKEN" > /root/.secrets/cloudflare.ini )
 fi
 
-if [ ! -d "$CERT_DIR" ]; then
+# ONE wildcard covers portal, gw AND every per-terminal vanity alias: the native
+# DCV client titles its window by connect host (the .dcv format has no title
+# key), so the portal hands out <terminal>.<zone> names that all resolve to the
+# gateway, and the title bar names the terminal instead of 'gw'.
+#
+# It must be requested ALONE. Boulder rejects an order that mixes *.<zone> with
+# any name that wildcard already covers ("Domain name X is redundant with a
+# wildcard domain in the same request") — and both ASP_PORTAL_HOST and
+# ASP_GW_HOST live under <zone>. --cert-name pins the lineage so live/ and
+# renewal/ paths stay stable no matter which names are on the cert.
+WILDCARD="*.${ASP_PORTAL_HOST#*.}"
+RENEWAL_CONF="/etc/letsencrypt/renewal/$ASP_PORTAL_HOST.conf"
+
+# A cert DIRECTORY is not a managed cert. Found in the field: a hand-placed cert
+# left plain files under live/ with no renewal/*.conf, so certbot would never
+# touch it and expiry was a scheduled silent outage. The lineage is the real
+# test — never `[ ! -d "$CERT_DIR" ]` alone.
+NEED=""
+if [ ! -s "$RENEWAL_CONF" ]; then
+  NEED="no certbot lineage — nothing would ever renew this cert"
+elif [ ! -d "$CERT_DIR" ]; then
+  NEED="lineage exists but $CERT_DIR is missing"
+elif ! openssl x509 -in "$CERT_DIR/cert.pem" -noout -text | grep -qF "DNS:$WILDCARD"; then
+  NEED="cert carries no $WILDCARD SAN (pre-vanity tenant)"
+fi
+
+if [ -n "$NEED" ]; then
+  echo "cp-tls: (re)issuing — $NEED"
+  EXPAND=()
+  if [ -s "$RENEWAL_CONF" ]; then
+    EXPAND=(--expand)          # name set is changing on an existing lineage
+  elif [ -d "$CERT_DIR" ]; then
+    # an unmanaged live/ dir blocks a fresh lineage of the same name. The
+    # gateway and nginx serve their own copies (deploy hook), so moving it
+    # aside costs no downtime, and it stays on disk as a fallback.
+    mv "$CERT_DIR" "$CERT_DIR.unmanaged.$(date +%s)"
+  fi
   certbot certonly --dns-cloudflare \
     --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \
-    -d "$ASP_PORTAL_HOST" -d "$ASP_GW_HOST" \
+    -d "$WILDCARD" --cert-name "$ASP_PORTAL_HOST" "${EXPAND[@]}" \
     --non-interactive --agree-tos -m "${ASP_CERT_EMAIL:?ASP_CERT_EMAIL missing from /etc/asp-terminal.env}" || exit 1
 fi
 

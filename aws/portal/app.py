@@ -5,6 +5,7 @@ broker tokens. Session sharing: owners/admins grant view or control to other
 tenant users; guests join the same session through the gateway.
 """
 
+import re
 import socket
 import time
 import urllib.parse
@@ -439,6 +440,27 @@ def _ensure_session(owner_local: str, machine: dict) -> dict:
     for s in sessions:
         if s.get("State") == "READY" and _session_on_host(s, ip):
             return s
+    # An UNKNOWN session on a box that is up and broker-AVAILABLE (connect()
+    # gated on both before calling us) is usually a corpse — e.g. dcvserver
+    # restarted underneath it — and it can wedge Connect indefinitely. Give
+    # the agent ~30s to re-report it after a wake (deleting a session that
+    # would have recovered kills the user's running apps), then clear it.
+    zombie = next((s for s in sessions
+                   if s.get("State") == "UNKNOWN" and _session_on_host(s, ip)), None)
+    if zombie:
+        for _ in range(6):
+            time.sleep(5)
+            cur = next((s for s in broker.describe_sessions(owner=owner_local)
+                        if s.get("Id") == zombie["Id"]), None)
+            if cur is None or cur.get("State") in ("DELETING", "DELETED"):
+                break
+            if cur.get("State") == "READY":
+                return cur
+        else:
+            try:
+                broker.delete_session(zombie["Id"], owner_local, force=True)
+            except Exception:
+                pass  # a row the broker already dropped on its own
     # don't double-create while one is still being born here (a CREATING
     # session with no Server yet is still being placed — assume it's ours)
     if not any(s.get("State") == "CREATING"
@@ -448,8 +470,11 @@ def _ensure_session(owner_local: str, machine: dict) -> dict:
         # a boot/close — absorb that window instead of erroring at the user
         for attempt in range(6):
             try:
+                # named after the machine so the client UI says which box this
+                # is — with several build boxes 'build-desktop' × N is unreadable
                 broker.create_session(
-                    name=f"{owner_local}-desktop", owner=owner_local,
+                    name=machine.get("name") or f"{owner_local}-desktop",
+                    owner=owner_local,
                     requirements=f"server:Host.Aws.Ec2InstanceId = '{machine['id']}'")
                 break
             except RuntimeError as e:
@@ -469,18 +494,21 @@ def _ensure_session(owner_local: str, machine: dict) -> dict:
         "persists, tell your admin contact.")
 
 
-def _connect_response(session_id: str, connect_user: str):
+def _connect_response(session_id: str, connect_user: str, label: str = ""):
     data = broker.get_connection_data(session_id, connect_user)
     token = data.get("ConnectionToken", "")
+    # the label rides in as the connect HOST (a vanity alias for the gateway)
+    # because the client titles its window by host — see config.gateway_host
+    host = config.gateway_host(label)
     # format per userguide/using-connecting-uri.html: dcv://host:port/?authToken=...#sessionId
     dcv_url = (
-        f"dcv://{config.GATEWAY_HOST}:{config.GATEWAY_PORT}/"
+        f"dcv://{host}:{config.GATEWAY_PORT}/"
         f"?authToken={urllib.parse.quote(token, safe='')}#{session_id}"
     )
     dcv_file = "\n".join([
         "[version]", "format=1.0",
         "[connect]",
-        f"host={config.GATEWAY_HOST}",
+        f"host={host}",
         f"port={config.GATEWAY_PORT}",
         f"sessionid={session_id}",
         f"authtoken={token}",
@@ -514,7 +542,7 @@ def connect(request: Request, instance_id: str):
     try:
         session = _ensure_session(owner_local, m)
         aws_ec2.force_display_layout(m["id"], session["Id"])
-        dcv_url, dcv_file = _connect_response(session["Id"], owner_local)
+        dcv_url, dcv_file = _connect_response(session["Id"], owner_local, label=m["name"])
     except HTTPException as e:
         return _render("error.html", user=user, message=e.detail)
     except Exception as e:
@@ -522,7 +550,7 @@ def connect(request: Request, instance_id: str):
     return _render(
         "connect.html",
         user=user, dcv_url=dcv_url, session_id=session["Id"],
-        connect_user=owner_local,
+        connect_user=owner_local, machine_name=m["name"],
     )
 
 
@@ -589,16 +617,24 @@ def join(request: Request, session_id: str):
                 grants[my_local] = "control"
                 broker.update_permissions(session_id, s.get("Owner", ""), broker.build_permissions(grants))
                 break
-    dcv_url, dcv_file = _connect_response(session_id, my_local)
+    label = ""
+    try:
+        s = next((s for s in broker.describe_sessions() if s.get("Id") == session_id), None)
+        if s:
+            label = next((m["name"] for m in aws_ec2.list_desktops()
+                          if _session_on_host(s, m.get("private_ip") or "")), "")
+    except Exception:
+        pass  # no label -> plain gateway host; joining still works
+    dcv_url, dcv_file = _connect_response(session_id, my_local, label=label)
     return _render(
         "connect.html",
         user=user, dcv_url=dcv_url, session_id=session_id,
-        connect_user=my_local,
+        connect_user=my_local, machine_name=label,
     )
 
 
 @app.get("/dcvfile/{session_id}/{connect_user}")
-def dcv_file(request: Request, session_id: str, connect_user: str):
+def dcv_file(request: Request, session_id: str, connect_user: str, label: str = ""):
     user = _require_user(request)
     my_locals = _my_locals(user)
     if connect_user not in my_locals and not _is_admin(user):
@@ -608,10 +644,13 @@ def dcv_file(request: Request, session_id: str, connect_user: str):
                 break
         else:
             raise HTTPException(403, "not yours")
-    _, dcv_content = _connect_response(session_id, connect_user)
+    _, dcv_content = _connect_response(session_id, connect_user, label=label)
+    # file named after the machine: the native client surfaces the file name,
+    # which is the only handle a user juggling several boxes gets to tell them apart
+    fname = re.sub(r"[^A-Za-z0-9._-]", "", label)[:40] or "terminal"
     return Response(
         dcv_content, media_type="application/dcv",
-        headers={"Content-Disposition": 'attachment; filename="terminal.dcv"'},
+        headers={"Content-Disposition": f'attachment; filename="{fname}.dcv"'},
     )
 
 

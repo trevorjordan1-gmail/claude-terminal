@@ -18,6 +18,25 @@ if is_dcv_terminal; then
         install -m 0755 "$SCRIPT_DIR/templates/cc-launcher.sh" "$HOME/.local/bin/cc-launcher" \
             || fail "could not install cc-launcher into ~/.local/bin"
     fi
+    # statusline: live context-fill readout in every session — the visible
+    # teaching tool for session hygiene (wrap up before the window fills)
+    if ! cmp -s "$SCRIPT_DIR/templates/cc-statusline.sh" "$HOME/.local/bin/cc-statusline"; then
+        install -m 0755 "$SCRIPT_DIR/templates/cc-statusline.sh" "$HOME/.local/bin/cc-statusline" \
+            || fail "could not install cc-statusline"
+    fi
+    python3 - <<'PY' || fail "could not wire statusLine into ~/.claude/settings.json"
+import json, pathlib
+p = pathlib.Path.home() / ".claude" / "settings.json"
+p.parent.mkdir(exist_ok=True)
+try:
+    cfg = json.loads(p.read_text())
+except Exception:
+    cfg = {}
+if "statusLine" not in cfg:  # never clobber a user's own statusline
+    cfg["statusLine"] = {"type": "command",
+                         "command": str(pathlib.Path.home() / ".local/bin/cc-statusline")}
+    p.write_text(json.dumps(cfg, indent=2) + "\n")
+PY
     CC_CMD='cc-launcher'
 else
     CC_CMD='claude --dangerously-skip-permissions'

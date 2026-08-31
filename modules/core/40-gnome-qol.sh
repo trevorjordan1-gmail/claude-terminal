@@ -11,6 +11,17 @@ gui_conf gsettings set org.gnome.desktop.screensaver lock-enabled false \
 gui_conf gsettings set org.gnome.desktop.session idle-delay 0 \
     || fail "could not set session idle-delay"
 
+# GNOME 46+ terminals ask "set as default terminal?" on first launch
+# (xdg-terminal-exec spec) unless a default is already recorded — seed it so
+# nobody is ever prompted. Never clobber an existing deliberate choice.
+XTL="$HOME/.config/xdg-terminals.list"
+if [ ! -f "$XTL" ]; then
+    mkdir -p "$HOME/.config"
+    printf 'org.gnome.Terminal.desktop\n' > "$XTL"
+elif ! grep -qx 'org.gnome.Terminal.desktop' "$XTL"; then
+    printf 'org.gnome.Terminal.desktop\n' >> "$XTL"
+fi
+
 # Dock favorites, converged from the reference machines: Terminal pinned,
 # App Center (snap-store) and Help (yelp) gone. Re-runs re-converge — if you
 # want another permanent pin, add it here.

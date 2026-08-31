@@ -1,5 +1,50 @@
 # Changelog
 
+## 2026-08-31 — field round: session-recall launcher, portal UX, real cert lineage (#26)
+
+- **`cc` launcher is now a session-recall TUI** (`templates/cc-launcher.sh`,
+  rewritten): alt-screen with arrow/`jk` navigation, every folder under
+  `~/Projects` (not just `<code>.tools`), "pick up where you left off" cards
+  across workspaces showing gist/exchanges/duration/context-fill, and a
+  wrap-up → `HANDOFF.md` → "new session from hand-off" loop. Context fill is
+  read from the transcript's latest-turn usage; ≥85% flags red, ≥80% nudges.
+  Plain numbered fallback whenever stdin/stdout is not a tty, so scripts and
+  tests drive it exactly as before. `cc <folder>` and pass-through args are
+  unchanged.
+- **`templates/cc-statusline.sh` (new)** — `project · model · context N%` in
+  every session, flipping to a wrap-up warning at 80%. Installed and wired
+  into `~/.claude/settings.json` by `10-claude-code.sh`, and only when the
+  user has no `statusLine` of their own. `SETUP.md`'s manual launcher step
+  gained the same two actions so the two paths cannot drift.
+- **Portal**: stale pages reload on tab-return and every 5 min; the connect
+  page returns to `/` once the client launches (and offers the download card
+  when nothing takes the handoff); sessions are named after the machine;
+  `.dcv` downloads as `<machine>.dcv`; **zombie `UNKNOWN` sessions** on an
+  up-and-available box are given ~30 s to re-report, then force-deleted and
+  recreated, instead of wedging Connect forever.
+- **Vanity gateway hosts** (`ASP_GW_VANITY`, default off): the native client
+  titles its window by connect host and the `.dcv` format has no title key, so
+  the portal can hand out `<terminal>.<zone>` names that all resolve to the
+  gateway. Needs the tenant's wildcard DNS record and a wildcard cert SAN.
+- **TLS — the cert had no renewal at all** (`aws/scripts/cp-tls.sh`): a
+  hand-placed cert leaves files under `live/` with no `renewal/*.conf`, and
+  the old `[ ! -d "$CERT_DIR" ]` guard read that as "managed" and skipped
+  issuance forever — expiry was a scheduled silent outage. The lineage is now
+  the test, an unmanaged `live/` dir is moved aside (the gateway and nginx
+  serve their own copies, so no downtime), and the order requests **only**
+  `*.<zone>` — Boulder rejects an order mixing a wildcard with names it
+  already covers. `--cert-name` keeps the paths stable.
+- **Desktop**: Chrome warms with `--no-startup-window` instead of the ignored
+  `--start-minimized`, which had been putting a window in the user's face on
+  every fresh session; `40-gnome-qol.sh` seeds `~/.config/xdg-terminals.list`
+  so GNOME 46+ stops asking each user to confirm a default terminal.
+- Portal suite 36 → 39.
+
+**Operator action:** `rollout.sh portal` and the normal kit `get.sh`. Vanity
+hosts additionally need the tenant's wildcard DNS record, `ASP_GW_VANITY=true`
+in `/asp/portal/config`, and a cert carrying the wildcard — which `cp-tls.sh`
+now converges on its own.
+
 ## 2026-08-31 — build-box session routing: host-qualify every session lookup (#25)
 
 Field report: with two operator build boxes running, **Connect on either one
