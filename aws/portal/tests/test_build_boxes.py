@@ -5,6 +5,8 @@ GROUP_BUILD_ENGINEERS is never set, and every new code path must be
 unreachable there. Tests assert the negative cases as hard as the positives.
 """
 import app
+import pytest
+from fastapi import HTTPException
 import config
 
 BUILD_GROUP = "33333333-3333-3333-3333-333333333333"
@@ -113,6 +115,105 @@ def test_build_badge_on_cards():
     box.update(css="running", label="Running", creator="tech1@example.com")
     html = tpl.render(**_page_ctx(mine=[box]))
     assert "build box · acme" in html
+
+
+# ---------- session routing (two build boxes, one shared 'build' owner) ----------
+
+def _sess(sid, ip, state="READY", owner="build"):
+    return {"Id": sid, "Owner": owner, "State": state,
+            "Server": {"Ip": ip, "Hostname": "ip-" + ip.replace(".", "-")}}
+
+
+def test_session_on_host():
+    s = _sess("s1", "10.0.1.5")
+    assert app._session_on_host(s, "10.0.1.5")
+    assert not app._session_on_host(s, "10.0.1.6")
+    assert not app._session_on_host(s, "")            # stopped machine: no ip
+    assert app._session_on_host({"Id": "s2", "Server": {"Hostname": "ip-10-0-1-7"}},
+                                "10.0.1.7")           # hostname-only broker row
+
+
+def test_ensure_session_picks_this_machine_not_sibling(monkeypatch):
+    """Two build boxes both run as 'build'. Connect on <clientB>'s box must return
+    <clientB>'s session even when <clientA>'s session was created first (the bug: an
+    owner-only lookup sent every Connect to <clientA>)."""
+    import broker
+    clienta = _sess("sess-clienta", "10.0.1.10")
+    clientb = _sess("sess-clientb", "10.0.1.20")
+    monkeypatch.setattr(broker, "describe_sessions", lambda owner=None: [clienta, clientb])
+    machine = {"id": "i-clientb", "private_ip": "10.0.1.20"}
+    assert app._ensure_session("build", machine)["Id"] == "sess-clientb"
+
+
+def test_ensure_session_creates_pinned_to_instance(monkeypatch):
+    """No session on the clicked box yet (sibling has one): create one pinned
+    to this instance via Requirements, and keep waiting for THIS host's
+    session — never return the sibling's."""
+    import broker
+    clienta = _sess("sess-clienta", "10.0.1.10")
+    clientb = _sess("sess-clientb", "10.0.1.20")
+    created = {}
+
+    def fake_create(name, owner, permissions=None, requirements=None):
+        created["requirements"] = requirements
+        return {}
+
+    calls = {"n": 0}
+
+    def fake_describe(owner=None):
+        # <clientB>'s session only appears after the create call
+        return [clienta, clientb] if created else [clienta]
+
+    monkeypatch.setattr(broker, "describe_sessions", fake_describe)
+    monkeypatch.setattr(broker, "create_session", fake_create)
+    monkeypatch.setattr(app.time, "sleep", lambda s: None)
+    machine = {"id": "i-clientb", "private_ip": "10.0.1.20"}
+    session = app._ensure_session("build", machine)
+    assert session["Id"] == "sess-clientb"
+    assert created["requirements"] == "server:Host.Aws.Ec2InstanceId = 'i-clientb'"
+
+
+def test_ensure_session_without_host_ip_fails_fast(monkeypatch):
+    """A machine with no private IP cannot be matched to a session. Fail fast
+    and honestly rather than spinning the 90s wait loop and then blaming the
+    DCV service — and never fall back to a same-owner session on another box."""
+    import broker
+    polls = {"n": 0}
+
+    def counting(owner=None):
+        polls["n"] += 1
+        return [_sess("sess-sibling", "10.0.1.10")]
+
+    monkeypatch.setattr(broker, "describe_sessions", counting)
+    monkeypatch.setattr(app.time, "sleep", lambda s: None)
+    with pytest.raises(HTTPException) as e:
+        app._ensure_session("build", {"id": "i-x", "private_ip": ""})
+    assert e.value.status_code == 409
+    assert "still coming up" in e.value.detail
+    assert polls["n"] == 0, "polled the broker despite having no way to match a session"
+
+
+def test_admin_remove_spares_sibling_build_box_sessions(monkeypatch):
+    """Removing one build box must not delete its siblings' sessions. Every
+    build box is owned by 'build', so the pre-fix owner-only sweep tore down
+    live sessions on machines that were not being removed."""
+    import broker
+    victim = {"id": "i-victim", "local_user": "build", "private_ip": "10.0.1.20"}
+    sibling_sess = _sess("sess-sibling", "10.0.1.10")
+    victim_sess = _sess("sess-victim", "10.0.1.20")
+    deleted = []
+
+    monkeypatch.setattr(app, "_require_admin", lambda r: {"upn": "adm@example.com"})
+    monkeypatch.setattr(app.aws_ec2, "list_desktops",
+                        lambda: [victim, {"id": "i-sibling", "local_user": "build",
+                                          "private_ip": "10.0.1.10"}])
+    monkeypatch.setattr(app.aws_ec2, "terminate", lambda i: None)
+    monkeypatch.setattr(broker, "describe_sessions",
+                        lambda owner=None: [sibling_sess, victim_sess])
+    monkeypatch.setattr(broker, "delete_session", lambda sid, owner: deleted.append(sid))
+
+    app.admin_remove(None, "i-victim")
+    assert deleted == ["sess-victim"], deleted
 
 
 def test_build_box_route_dormant():

@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-08-31 — build-box session routing: host-qualify every session lookup (#25)
+
+Field report: with two operator build boxes running, **Connect on either one
+opened the same desktop**, and the second box was unreachable from the portal.
+
+- **Root cause:** every build box runs its session as the fixed local user
+  `build` (group boxes have no single UPN to map), but the portal identified
+  sessions by **owner alone**. `_ensure_session` returned the first READY
+  session *anywhere in the fleet*. Session creation was unpinned too —
+  `createSessions` without `Requirements` lets the broker place a session on
+  any server where the owner exists.
+- **Fix:** `broker.create_session()` takes `requirements`, and `_ensure_session`
+  pins placement with `server:Host.Aws.Ec2InstanceId`. A new
+  `_session_on_host()` matches a session to a machine by the broker's
+  `Server.Ip`/`Hostname`, and the four owner-only lookups — Connect, `share`,
+  `admin_remove`, and the `join` admin self-grant — are host-filtered.
+- **The destructive one was `admin_remove`**: it swept *all* of the owner's
+  sessions, so removing one build box tore down its siblings' live sessions.
+  Now scoped to the machine being removed.
+- **Added on review:** `_ensure_session` fails fast with a 409 when the machine
+  has no private IP. It cannot match a session without one, and the wait loop
+  would otherwise spin its full 90 seconds and then blame the DCV service —
+  slow and misdiagnosed. `connect()` already tolerates a missing `private_ip`,
+  so the path is reachable.
+- Portal suite 31 → 36. The three field tests cover host matching and Connect
+  routing; review added the two paths the issue named but left untested — the
+  `admin_remove` sibling sweep and the no-IP case. Both were confirmed to fail
+  against the pre-fix code.
+
+Only *manifests* on operator tenants (customer tenants never set
+`GROUP_BUILD_ENGINEERS`, so build boxes are dormant), but the invariant —
+session lookups are host-qualified, placement is instance-pinned — is general
+hardening and a no-op wherever an owner has exactly one box.
+
+**Operator action:** portal rollout only. No changes on the boxes, existing
+sessions are untouched, and each build box gets its own session on next Connect.
+
 ## 2026-08-31 — exporter consent, appliance redirect, two pack fields (#24)
 
 Follow-on to #22, from field use of the appliance's portal-managed exporter config.
