@@ -344,7 +344,13 @@ if [ "${ASP_PROFILE:-standard}" = "medical" ] && [ -d /etc/dcv ]; then
   [ "$(cat /etc/dcv/default.perm 2>/dev/null)" = "$MEDPERM" ] || printf '%s\n' "$MEDPERM" > /etc/dcv/default.perm
 fi
 
-# WU-style self-update: daily check + catch-up on wake (Persistent), defers in use
+# WU-style self-update: periodic check while awake, defers while in use.
+# NOT Persistent: a missed daily run used to fire the instant a hibernated box
+# resumed — the exact moment a user is connecting — and the update restarted
+# dcvserver out from under their live session (dswd-build01, 2026-09-01). The
+# boxes hibernate nightly, so "missed" is the normal case, not the exception.
+# A deferred release now retries on the next ~2h awake tick, and
+# auto-update.sh independently refuses to run just after a resume.
 aws s3 cp "s3://$ASP_BUCKET/scripts/auto-update.sh" /opt/asp/auto-update.sh 2>/dev/null && chmod +x /opt/asp/auto-update.sh
 cat > /etc/systemd/system/asp-auto-update.service <<'UNIT'
 [Unit]
@@ -356,13 +362,20 @@ ExecStart=/opt/asp/auto-update.sh
 UNIT
 cat > /etc/systemd/system/asp-auto-update.timer <<'UNIT'
 [Unit]
-Description=Daily ASP terminal update check
+Description=ASP terminal update check (periodic while awake)
 
 [Timer]
-OnCalendar=daily
-RandomizedDelaySec=1h
+# Poll while the box is AWAKE rather than at a wall-clock time. These boxes
+# hibernate nightly, so an OnCalendar=daily tick almost never lands while one
+# is running — and Persistent=true (which used to cover that) fired the catch-up
+# the instant a box resumed, i.e. exactly while the user was connecting.
+# Every ~2h awake means a deferred release just retries soon instead of waiting
+# a day, so the in-use guard can be strict without stalling the fleet.
 OnBootSec=10min
-Persistent=true
+OnUnitActiveSec=2h
+RandomizedDelaySec=20min
+AccuracySec=1min
+Persistent=false
 
 [Install]
 WantedBy=timers.target

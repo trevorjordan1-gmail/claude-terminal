@@ -132,6 +132,19 @@ if command -v xrandr >/dev/null 2>&1; then
     xrandr --newmode 1920x1080_60 173.00 1920 2048 2248 2576 1080 1083 1088 1120 -hsync +vsync >/dev/null 2>&1
     xrandr --addmode "$OUT" 1920x1080_60 >/dev/null 2>&1
     xrandr --output "$OUT" --mode 1920x1080_60 --primary >/dev/null 2>&1
+    # Collapse the phantom heads. max-num-heads=1 only makes DCV pass
+    # -enabledoutputs 1; Xdcv still instantiates all four 800x600 CRTCs, so the
+    # session ADVERTISES a 4-head 3200x600 layout and a client attaching before
+    # the portal's Connect-time set-display-layout lands sees four 800x600
+    # screens (TJ, dswd-build01 2026-09-01). Turning the extras off makes the
+    # single-display intent true in the X server itself.
+    # This sets no resolution the user is stuck with: dcvagent still adds a mode
+    # at whatever size the client asks for on connect, so resizing the window
+    # keeps working exactly as before — it just resizes ONE head instead of
+    # leaving three 800x600 strips beside it.
+    for o in $(xrandr --query 2>/dev/null | awk '/ connected/{print $1}' | tail -n +2); do
+      xrandr --output "$o" --off >/dev/null 2>&1
+    done
   fi
 fi
 # Self-heal watchdog (#21): probes the framebuffer once gnome-shell is up and
@@ -185,7 +198,24 @@ prog 95 "Connecting to the session broker" 1
 # first clean reboot leaves dcvserver dead and the broker has no server
 # ("No DCV server found"); hibernate/resume masked it for a whole day
 systemctl enable dcvserver
-systemctl restart dcvserver
+# NEVER unconditionally `restart` dcvserver here. This script re-runs on every
+# release (auto-update.sh), and a dcvserver restart deletes every live virtual
+# session and the Claude job inside it — precisely the damage the needrestart
+# override above exists to prevent (#19). We did it to ourselves anyway:
+# dswd-build01 was mid-session on a hibernate resume when the v2026.08.31-2
+# self-update landed here, and the user's session was destroyed under them
+# (2026-09-01). `start` is a no-op when it is already running; only cycle it
+# when there is genuinely no session to lose. Config written above then applies
+# at the next reboot / pause->off conversion, the same cadence as #19.
+if ! systemctl is-active --quiet dcvserver; then
+  systemctl start dcvserver
+elif ! dcv list-sessions 2>/dev/null | grep -q "^Session:"; then
+  systemctl restart dcvserver
+else
+  echo "dcvserver: live session present — deferring restart (config applies at next pause->off)"
+fi
+# Restarting the AGENT is safe with a session live — it only re-registers the
+# broker link and does not touch sessions (see dcv-relink.sh).
 systemctl enable --now dcv-session-manager-agent
 systemctl restart dcv-session-manager-agent
 
