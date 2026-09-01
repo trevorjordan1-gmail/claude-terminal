@@ -347,7 +347,7 @@ fi
 # WU-style self-update: periodic check while awake, defers while in use.
 # NOT Persistent: a missed daily run used to fire the instant a hibernated box
 # resumed — the exact moment a user is connecting — and the update restarted
-# dcvserver out from under their live session (dswd-build01, 2026-09-01). The
+# dcvserver out from under their live session (a build box, 2026-09-01). The
 # boxes hibernate nightly, so "missed" is the normal case, not the exception.
 # A deferred release now retries on the next ~2h awake tick, and
 # auto-update.sh independently refuses to run just after a resume.
