@@ -147,6 +147,17 @@ postgres/template1 from PUBLIC) — runs once on empty PGDATA only.
   that catches "never ran" (§5's silent-alarm instinct — alert on staleness, not only on
   error). The kit's `verify.sh` FAILs local calendar timers without `Persistent=true` and
   timed crontab entries on terminals.
+  **When the job must NOT run during a wake, use a monotonic timer instead**
+  (`OnBootSec=` + `OnUnitActiveSec=`, no `OnCalendar`, and therefore no
+  `Persistent=`). `Persistent=true` fires its catch-up the *instant* a box
+  resumes — exactly when the user is connecting — so it is the wrong shape for
+  anything destructive. The platform's own `asp-auto-update.timer` is monotonic
+  for precisely this reason: as a `Persistent=true` calendar timer it restarted
+  `dcvserver` under a live session on resume and destroyed the user's desktop
+  (2026-09-01). A monotonic timer polls only while the box is awake, so it needs
+  no catch-up at all, and `verify.sh` does not police it — that check gates on
+  `TimersCalendar`, so a timer with no `OnCalendar` is exempt by construction.
+  Do not "fix" such a timer back to `Persistent=true`.
 - **Nightly restore-verify:** restore the latest snapshot into a scratch container,
   integrity-check (row counts / restic check), ping its own check.
 - **Proof:** run one full manual drill now — restore, verify content, tear down — and one

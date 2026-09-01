@@ -14,7 +14,7 @@ flock -n 9 || { echo "another update run holds the lock"; exit 0; }
 
 # Never update in the minutes right after a hibernate resume. The user is
 # about to connect and the connection count below still reads 0 — that race is
-# how dswd-build01 lost a live session on 2026-09-01. /run is tmpfs and is
+# how a build box lost a live session on 2026-09-01. /run is tmpfs and is
 # restored with the RAM image, so this stamp survives a resume and is absent
 # after a real boot (where OnBootSec already gives us a delay).
 RESUME_GRACE=${ASP_UPDATE_RESUME_GRACE:-900}

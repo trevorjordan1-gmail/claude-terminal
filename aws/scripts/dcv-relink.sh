@@ -28,7 +28,7 @@ cat > /usr/lib/systemd/system-sleep/asp-dcv-relink <<'HOOK'
 [ "$1" = "post" ] || exit 0
 # Mark the resume. auto-update.sh reads this and refuses to apply a release in
 # the minutes right after a wake, when the user is connecting but the DCV
-# connection count still reads 0 (dswd-build01 lost a live session to that race
+# connection count still reads 0 (a build box lost a live session to that race
 # on 2026-09-01). /run is tmpfs restored with the RAM image, so the stamp
 # survives the resume and is absent after a real boot.
 date +%s > /run/asp-resumed-at

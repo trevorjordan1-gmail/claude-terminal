@@ -136,7 +136,7 @@ if command -v xrandr >/dev/null 2>&1; then
     # -enabledoutputs 1; Xdcv still instantiates all four 800x600 CRTCs, so the
     # session ADVERTISES a 4-head 3200x600 layout and a client attaching before
     # the portal's Connect-time set-display-layout lands sees four 800x600
-    # screens (TJ, dswd-build01 2026-09-01). Turning the extras off makes the
+    # screens (operator report, 2026-09-01). Turning the extras off makes the
     # single-display intent true in the X server itself.
     # This sets no resolution the user is stuck with: dcvagent still adds a mode
     # at whatever size the client asks for on connect, so resizing the window
@@ -202,7 +202,7 @@ systemctl enable dcvserver
 # release (auto-update.sh), and a dcvserver restart deletes every live virtual
 # session and the Claude job inside it — precisely the damage the needrestart
 # override above exists to prevent (#19). We did it to ourselves anyway:
-# dswd-build01 was mid-session on a hibernate resume when the v2026.08.31-2
+# A build box was mid-session on a hibernate resume when the v2026.08.31-2
 # self-update landed here, and the user's session was destroyed under them
 # (2026-09-01). `start` is a no-op when it is already running; only cycle it
 # when there is genuinely no session to lose. Config written above then applies
