@@ -249,6 +249,7 @@ change that spans both ships as one commit — no cross-repo contract dance.
 | A REAL black screen: fresh session streams one flat colour from its first frame, gnome-shell alive and idle, windows mapped, `xrefresh`/RandR changes don't help | mutter started against Xdcv's default `800x600 @ 0.00 Hz` mode and latched a dead frame clock (#20; intermittent — depends on how far shell startup gets before dcvagent's real mode lands). Diagnose: `dcv get-screenshot`, or `xwd -root` → 1 distinct colour; dcvagent I-frames ~5–7 KB vs 30–200 KB painted. Recover in place, user apps survive: as root `kill -TERM $(pgrep -u <user> -x gnome-shell)` (`org.gnome.Shell@x11.service` is `Restart=always`; `systemctl --user restart` is refused), then `dcv set-display-layout --session=<sid> 1920x1080` — the fresh shell may pick the tiled default. Prevention: dcvsessioninit sets a real 1920x1080 mode before gnome-session (#20) and the paint probe self-heals stragglers (#21) |
 | "No DCV server found for the given criteria" on create | the SM agent pairs with the *running* dcvserver — after any dcvserver restart the agent must restart too or the broker drops the server. Fixed: agent unit drop-in `PartOf=dcvserver.service` (restart propagates). Verify with describeServers → AVAILABLE, then a test create |
 | Connect silently does nothing / session never READY | `dcvserver` **exits when its last session is deleted** and the packaged unit has no Restart= — a dead dcvserver breaks Connect with no visible error. Fixed: systemd drop-in `Restart=always` (dcv-desktop-install.sh); portal also surfaces broker create failures on an error page now |
+| `dcvserver` restarted at resume, box had **no** session | Expected, and NOT the #28 self-update bug: with no sessions `dcvserver` exits at resume and `Restart=always` brings it straight back. The discriminator is a box *with* a live session — there the same resume leaves the PID and `ActiveEnterTimestamp` unchanged. "dcvserver restarted" alone is not evidence of the update race |
 | Instance wedged in `stopping` after Pause | hibernating within ~2 min of a boot/reboot can hang the stop — `aws ec2 stop-instances --force` clears it (RAM state lost, clean cold start). The idle-guard build should refuse hibernate right after boot |
 | Sandbox DNS looks broken | builder workstation may not resolve fresh records — verify with `https://dns.google/resolve?name=<host>&type=A`, and `curl --resolve host:443:IP` to test |
 | Instance goes network-dead ~5 min into provisioning (SSM ConnectionLost, EC2 "impaired") | the `network-manager` package (pulled by `ubuntu-desktop*`) ships `/usr/lib/netplan/00-network-manager-all.yaml`, flipping the netplan **renderer** to NM for all interfaces: networkd releases the ENI and — if NM is told unmanaged — NOBODY owns it. Fix (both, BEFORE the GNOME install; desktop-setup.sh does): keyfile `unmanaged-devices` guard AND shadow the renderer file (`/etc/netplan/00-network-manager-all.yaml` containing just `network: {version: 2}`). Recovery of a dead box: stop → attach root vol to a helper in the SAME AZ → write the shadow file → reattach → start (confirmed working); cross-AZ boxes are cheaper to rebuild |
@@ -290,7 +291,13 @@ Then: `https://portal.<dns_zone>` → Entra login → Connect.
 Compute is the only meaningful variable cost; the watchdog (control plane,
 systemd timer, every 5 min — installed by `portal-deploy.sh`) pauses idle
 terminals. **Pause (hibernate) is always preferred over power-off: identical
-cost (~EBS only), but state survives.** Activity = any of:
+cost (~EBS only), but state survives** — *for pauses shorter than the pause→off
+limit below (default 48 h)*. Past that the watchdog deliberately converts the
+pause into a full power-off, so a box paused for days **cold-boots** and its
+desktop is gone. `Hibernation: Configured=true` is not a promise that a
+long-paused box restores a session; the conversion limit is what decides that
+(field-confirmed 2026-09-01 — five user desktops paused multi-day all cold-
+booted, while two boxes paused briefly came back as genuine resumes). Activity = any of:
 
 1. a DCV client connected (someone is looking),
 2. `claude` consumed CPU this window (`idle-probe.sh` sums claude process CPU
