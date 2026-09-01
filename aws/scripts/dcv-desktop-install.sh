@@ -107,7 +107,7 @@ CONF
 # ran). The stock file execs /etc/X11/Xsession with no desktop identity, so
 # gnome-shell came up as unbranded "GNOME": no ubuntu-dock (the "no sidebar"
 # bug), no appindicators, light gnome-terminal. Exporting the identity here
-# fixes all of it — verified live on cct01 2026-08-15.
+# fixes all of it — verified live on an operator terminal 2026-08-15.
 cat > /etc/dcv/dcvsessioninit <<'INIT'
 #!/bin/sh
 # ASP-owned (rewritten by dcv-desktop-install.sh). A nice-dcv-server package
