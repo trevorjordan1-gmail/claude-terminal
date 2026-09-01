@@ -145,15 +145,33 @@ product lives upstream on `main`. The loop (issue #1):
    issue on this repo (context, root cause, proposal, acceptance). Label the
    area (`area:kit` / `area:aws` / `area:docs`) and `operator`. Issues are
    public and *not* covered by pii-guard: **no client codes, hostnames,
-   account IDs or people** in issue text, branch names or commit messages —
-   `acme`/`example.com` placeholders only. "TJ"-style initials are fine.
+   account IDs or people** — anywhere. That means issue text *and* branch
+   names, commit messages, **code comments, log strings and test fixture
+   data**. `acme`/`example.com`, `clienta`/`clientb` placeholders only;
+   "TJ"-style initials are fine. A comment is the easy one to forget and the
+   worst place to get it wrong: an issue body can be edited, but a hostname in
+   a tracked file is cloned onto every box, and editing it forward does not
+   remove it from the history (2026-09-01, five comments across four
+   `aws/scripts/` files). Describe the box by its role — "a build box",
+   "the operator tenant".
 2. **Branch** `<area>/<short-slug>` (e.g. `aws/polkit-aptdaemon`) from
    current `main`, referencing the issue; test against the pilot tenant from
    the branch tree (`ASP_TENANTS=… aws/scripts/rollout.sh`).
-3. **Merge**: the repo admin reviews and merges to `main` (`Fixes #N` in the
-   merge commit closes the issue). Main is production — validate before
-   merging (shellcheck, portal tests, `terraform validate`, container runs
-   for kit changes).
+3. **Merge — the repo admin only.** Field/operator agents open issues and may
+   push a branch; they do **not** merge to `main` and do **not** tag. The
+   admin reviews, merges (`Fixes #N` in the merge commit closes the issue) and
+   tags. This is not ceremony: `main` is production and the fleet re-pulls it
+   daily, so an unreviewed merge is a fleet-wide deploy. The reviews have been
+   load-bearing — landing incoming work has caught a resurrected pack field
+   (#22), a cert order Let's Encrypt rejects outright plus a fix that did not
+   fix the defect its own issue described (#26), and a client hostname
+   committed into tracked source (#28, which was merged and tagged directly —
+   the reason this step now says so explicitly). Validate before merging:
+   shellcheck, portal tests, `terraform validate`, container runs for kit
+   changes.
+   *If you have already shipped something urgent directly, say so in the issue
+   and link the merge sha, so it gets reviewed after the fact rather than not
+   at all.*
 4. **Tag every shipping merge**: `vYYYY.MM.DD` (`-1`, `-2` for more than one
    a day). `rollout.sh` stamps tenants with `git describe`, so tags are what
    make per-tenant version records meaningful. Roll tenants forward
