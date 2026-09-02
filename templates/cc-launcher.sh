@@ -272,9 +272,12 @@ def window_for(model):
 
     The old test was `"1m" in model`, which never matched a real id
     (`claude-opus-5`), so every 1M session read 5x high and pinned at the cap
-    (field-hit 2026-09-02). Unknown models fall back to Claude Code's own
-    documented default; over-reporting fill only nudges early, which is the safe
-    direction for a hygiene prompt."""
+    (field-hit 2026-09-02). Returns None when the window is genuinely unknown --
+    the caller then reports "-" rather than a number. Guessing a denominator is
+    worse than admitting ignorance: our statusline is NOT installed when the user
+    already has one of their own (10-claude-code.sh never clobbers it), so a
+    guess would read 5x high on every 1M session forever, flag every folder FULL,
+    and train people to ignore the one signal this feature exists to give."""
     try:
         with open(WIN_CACHE) as f:
             win = json.load(f).get(model or "")
@@ -282,7 +285,7 @@ def window_for(model):
             return int(win)
     except Exception:
         pass
-    return 200_000
+    return None
 
 def ts_parse(s):
     try:
@@ -346,8 +349,9 @@ for path in sys.argv[1:]:
         used = ((usage.get("input_tokens") or 0)
                 + (usage.get("cache_read_input_tokens") or 0)
                 + (usage.get("cache_creation_input_tokens") or 0))
-        win = int(os.environ.get("CC_CONTEXT_WINDOW") or window_for(model))
-        ctx = str(min(99, used * 100 // win))
+        win = os.environ.get("CC_CONTEXT_WINDOW") or window_for(model)
+        if win:
+            ctx = str(max(0, min(100, used * 100 // int(win))))
     mins = ""
     a, b = ts_parse(first_ts), ts_parse(last_ts)
     if a and b:
