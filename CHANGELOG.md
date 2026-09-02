@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-09-02 — context percentage read 5x high; the window is now learned, not guessed
+
+Field report: the statusline showed `⚠ context 99% — wrap up` while `/context`
+showed 32%. Both the statusline and the launcher divided by a **hardcoded
+200,000-token window**; the Claude 5 family has a **1M** window, so every real
+session read ~5x high and pinned at the 99% cap. The numerator was always fine
+— the denominator was wrong, and the cap hid it.
+
+- **`cc-statusline.sh` takes the window from Claude Code**, which supplies
+  `context_window.context_window_size` and a pre-computed
+  `context_window.used_percentage` for the model actually running. Nothing is
+  hardcoded and nothing is inferred from the model name, so a future model with
+  a 2M window is correct on day one. Falls back to `total_input_tokens` ÷ window,
+  then to the transcript's latest turn, because `used_percentage` and
+  `current_usage` are null before the first API call and again after `/compact`.
+- **`cc-launcher.sh` no longer guesses.** Its old test was `"1m" in model`,
+  which never matches a real id like `claude-opus-5` — so the "1M auto-detect"
+  never once fired. A transcript records the model id and usage but no window,
+  so the statusline now caches `model_id → window` at
+  `~/.local/state/cc-launcher/model-windows.json` and the launcher reads it. A
+  new model teaches the cache the first time it is used; there is no table here
+  to go stale.
+- Unknown model with a cold cache falls back to Claude Code's own documented
+  200k default. Over-reporting fill only nudges early, which is the safe
+  direction for a hygiene prompt. `CC_CONTEXT_WINDOW` still overrides both.
+- The `min(99, …)` cap is gone; percentages are true values clamped to 0–100.
+
+**Do not use `exceeds_200k_tokens` as a fill signal** — it is a fixed 200k
+threshold regardless of the model's actual window.
+
 ## 2026-08-31 — field round: session-recall launcher, portal UX, real cert lineage (#26)
 
 - **`cc` launcher is now a session-recall TUI** (`templates/cc-launcher.sh`,
