@@ -258,9 +258,31 @@ from datetime import datetime
 
 HEAD_LINES, TAIL_BYTES = 120, 262144
 
+WIN_CACHE = os.path.expanduser("~/.local/state/cc-launcher/model-windows.json")
+
+
 def window_for(model):
-    # 1M-context models would make the 200k default read 5x too high
-    return 1_000_000 if "1m" in (model or "").lower() else 200_000
+    """Context window for a model id, learned rather than guessed.
+
+    A transcript records the model id and its token usage but NOT the window, so
+    this cannot be derived from the file. Claude Code does tell the STATUSLINE
+    the real window (context_window.context_window_size), and cc-statusline
+    caches model_id -> window there, so a model with a bigger window teaches the
+    cache the first time it is used -- no table here to go stale.
+
+    The old test was `"1m" in model`, which never matched a real id
+    (`claude-opus-5`), so every 1M session read 5x high and pinned at the cap
+    (field-hit 2026-09-02). Unknown models fall back to Claude Code's own
+    documented default; over-reporting fill only nudges early, which is the safe
+    direction for a hygiene prompt."""
+    try:
+        with open(WIN_CACHE) as f:
+            win = json.load(f).get(model or "")
+        if win:
+            return int(win)
+    except Exception:
+        pass
+    return 200_000
 
 def ts_parse(s):
     try:
