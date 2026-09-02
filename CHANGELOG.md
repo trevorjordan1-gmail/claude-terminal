@@ -22,9 +22,14 @@ session read ~5x high and pinned at the 99% cap. The numerator was always fine
   `~/.local/state/cc-launcher/model-windows.json` and the launcher reads it. A
   new model teaches the cache the first time it is used; there is no table here
   to go stale.
-- Unknown model with a cold cache falls back to Claude Code's own documented
-  200k default. Over-reporting fill only nudges early, which is the safe
-  direction for a hygiene prompt. `CC_CONTEXT_WINDOW` still overrides both.
+- **An unknown window reports unknown** (`-`), never a guessed number. The
+  statusline is not installed when the user already has a `statusLine` of their
+  own — `10-claude-code.sh` never clobbers one — so the cache can stay cold
+  indefinitely, and a guessed denominator would read 5x high on every 1M
+  session forever, flag every folder FULL, and train people to ignore the one
+  signal this feature exists to give. A missing number is honest; the launcher
+  already skips `-` when deciding what to flag. `CC_CONTEXT_WINDOW` still
+  overrides both.
 - The `min(99, …)` cap is gone; percentages are true values clamped to 0–100.
 
 **Do not use `exceeds_200k_tokens` as a fill signal** — it is a fixed 200k
