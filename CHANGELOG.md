@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-02 — one sign-in rule, stated once (#32 item 4)
+
+The Entra sign-in was described in four places, each slightly differently, and
+the venue clause ("from their own device", "never this box") contradicted what
+engineers actually do. Resolved by making the process smaller rather than by
+picking a side in the venue argument.
+
+- **The engineer's whole job is now one sentence**: open the printed link in a
+  private window, sign in, close the window. Any device, including the desktop
+  in front of them. The venue clause is gone — the platform build runs on an
+  adNET build box that already holds the resulting directory-wide-write token
+  in process memory, so *where the browser ran* was never the control it read
+  as.
+- **The security rule that does matter is stated alone, so it is not buried:**
+  only ever use a link this run just printed. That is the anti-phishing rule,
+  and it was previously the fifth clause of a five-clause paragraph.
+- **Everything else moved out of the instructions and into a note**, because it
+  described how the tool behaves rather than anything a human does: codes are
+  single-use, 15-minute expiry, the token never reaches a file, a dead run just
+  means running it again.
+- **`ENTRA-SSO.md` states it once; `PLATFORM-BUILD.md` and `SETUP.md` now point
+  at it** instead of restating it. Four independent restatements is how they
+  drifted apart in the first place, so the fix is structural, not editorial.
+
 ## 2026-09-02 — doctl in the base module (#36)
 
 `PLATFORM-BUILD` step 1 is doctl-driven and no box had `doctl` — it is not in

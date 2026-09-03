@@ -108,9 +108,9 @@ Then, in order:
    - If `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` are in the pack: run
      `scripts/aiops-mail.sh login` and RELAY the printed device code to the engineer — they
      sign in **AS the aiops account** (creds + TOTP from Hudu; the tool refuses and drops
-     the token if any other identity signs in) **from their own device** (the one relay
-     rule, stated in ENTRA-SSO.md; where the sign-in should physically happen is under
-     review — see issue #32 item 4). Then `scripts/aiops-mail.sh verify` — a
+     the token if any other identity signs in): **open the printed link in a private
+     window, sign in, close the window** (ENTRA-SSO.md states the rule once).
+     Then `scripts/aiops-mail.sh verify` — a
      self-send round-trip probe that cleans up after itself; its PASS lines go in STATE.md.
    - If `ENTRA_*` hasn't landed (external-IT lead time): record "aiops mail pending ENTRA_*"
      in STATE.md and continue — nothing blocks; run login+verify when the values land.
