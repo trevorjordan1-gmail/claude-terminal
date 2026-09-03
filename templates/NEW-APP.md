@@ -47,13 +47,16 @@ backend.
    that fail the Trivy gate — build in a builder stage, copy artifacts only, and strip the
    package managers from the final image:
    `RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn*`
-   The app's `scripts/deploy.sh` comes from `templates/deploy.app.template` — the
-   dual-path deploy (pull the CI image from GHCR using `GITHUB_CLASSIC`, the classic
+   Wait for green by polling `gh run list --commit <sha> --json status,conclusion` —
+   `gh run watch` cannot pick a run non-interactively right after a push. The app's
+   `scripts/deploy.sh` comes from `templates/deploy.app.template` — the dual-path deploy (pull the CI image from GHCR using `GITHUB_CLASSIC`, the classic
    read:packages-only token — **ghcr.io refuses fine-grained PATs entirely**; pull
    unavailable → ship the CI-green tree and build the identical tag on the droplet — CI
    stays the record either way), ending with the Access-challenge + probe-token
    verification. GHCR login is transient (login → pull → logout) as the machine-account
-   username, never `x-access-token`.
+   username, never `x-access-token`. **After stamping, `grep -n '{{' scripts/deploy.sh`
+   must print nothing** — the template carries both bare `{{CODE}}` and adorned
+   `{{CODE}}-docker01` placeholders, and a missed one fails at deploy time, not now.
 3. **Database (if needed):** on the droplet, `cd /opt/<CLIENT_CODE>/postgres &&
    ./db-add.sh <app>` — the printed `DATABASE_URL` goes ONLY into the app's droplet `.env`
    (0600). Never reuse another app's database or credentials.

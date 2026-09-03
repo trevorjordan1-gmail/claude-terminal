@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-09-02 — HANDOFF-TO-HUDU is append-only; zero-question build fields (#34, #35)
+
+- **`HANDOFF-TO-HUDU.md` is append-only and swept per entry** (#34). It was
+  designed as one file swept once at sign-off, but a multi-stage engagement
+  mints secrets in batches, so the file got **recreated under the same name**
+  after the first sweep. An engineer said "I have the handoff copied off" about
+  batch 1 and the agent deleted **batch 2, unswept**. It was recovered only
+  because every entry happened to have a runtime home; a value with no other
+  home would simply have been lost.
+  Now: later batches append, never recreate. Every entry carries a checkbox and
+  a batch stamp, and a mandatory **`Runtime home`** field — where the value also
+  lives on the platform, or "nowhere else" if truly nowhere; that field is the
+  recovery path that saved this one. **The file goes only when every box is
+  ticked** — never on a whole-file statement, because "the handoff" is
+  ambiguous the moment there is more than one batch. PRODUCT-APP deploys append
+  to the same file.
+- **The droplet layout is stated once** (#33's doc half):
+  `/opt/<CLIENT_CODE>/{edge,postgres,backup,scripts}/` plus
+  `/opt/<CLIENT_CODE>/<app>.<CLIENT_DOMAIN>/`. `platform-verify.sh` already
+  assumed it; nothing said it. SETUP step 1 now also lists `platform-verify.sh`
+  and `restic-snapshots-age.sh`, which it had never mentioned.
+- **Zero-question build fields** (#35): `DROPLET_SIZE` (its presence is the
+  pre-authorised spend), `SSO_AT_BUILD=yes|otp`, `ENGAGEMENT=build|adopt`, and
+  `<PRODUCT>_IMAGE` — each removing a question the build would otherwise stop
+  to ask.
+
+**Held back again:** the relay-flow venue wording (#32 item 4) appears in this
+diff too, in `PLATFORM-BUILD.md` and `SETUP.md`. Both now read as they did —
+sign-in from the engineer's own device — with a pointer to the open question.
+Landing it here would have decided by the back door what #32 raises directly.
+
 ## 2026-09-02 — pack-verify: lint the code, keep the errors, record what the API knows (#31)
 
 - **Uppercase `CLIENT_CODE` is now a lint FAIL.** It names S3 buckets, which
