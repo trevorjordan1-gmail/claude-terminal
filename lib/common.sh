@@ -161,3 +161,20 @@ asp_env() {
 is_medical_terminal() {
     [ "$(asp_env ASP_PROFILE)" = "medical" ] || [ -f /etc/claude-terminal/medical ]
 }
+
+# Summarise auto-update.sh's deferral breadcrumb for verify.sh.
+# Prints "<whole hours>|<version> deferred <N>h over <C> attempts (<reason>)",
+# or nothing when the file is unreadable/malformed. The file is written by
+# auto-update.sh with json.dumps, so parse it as JSON — never grep it.
+asp_defer_summary() {
+    python3 - "$1" 2>/dev/null <<'PY'
+import json, sys, time
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+h = int((time.time() - d.get("first_deferred_at", time.time())) // 3600)
+print("%d|%s deferred %dh over %s attempts (%s)"
+      % (h, d.get("want", "?"), h, d.get("count", "?"), d.get("last_reason", "?")))
+PY
+}

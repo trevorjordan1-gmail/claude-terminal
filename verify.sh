@@ -385,6 +385,53 @@ if pkg_installed cups-browsed && systemctl is-enabled cups-browsed >/dev/null 2>
     s "cups-browsed still enabled (run --with-printing-direct to disable auto-queues)"
 fi
 
+# ---- am I up to date? -------------------------------------------------------
+# Three separate clocks, and nothing reported them together until now:
+#   1. the KIT      (~/claude-terminal, pulled by get.sh)
+#   2. the RELEASE  (/opt/asp/applied-version, applied by auto-update.sh)
+#   3. the PORTAL   (control plane, its own version — not visible from a box)
+# This answers 1 and 2 for the box you are standing on, offline by design: no
+# network call, so it never hangs and never lies about what it could not reach.
+echo
+log "claude-terminal verify — versions"
+KITV=$(git -C "$SCRIPT_DIR" describe --tags --always --dirty 2>/dev/null || echo unknown)
+if [ "$KITV" = unknown ]; then
+    s "kit version unknown — not a git checkout, so get.sh cannot be updating it"
+else
+    KITD=$(git -C "$SCRIPT_DIR" log -1 --format=%cd --date=short 2>/dev/null || echo "?")
+    KITT=$(git -C "$SCRIPT_DIR" log -1 --format=%ct 2>/dev/null || date +%s)
+    KITAGE=$(( ( $(date +%s) - KITT ) / 86400 ))
+    # get.sh pulls on every run and the fleet runs it daily, so a checkout more
+    # than a week stale means the pull is not happening — not that nothing shipped.
+    if [ "$KITAGE" -gt 7 ]; then
+        f "kit $KITV is from $KITD (${KITAGE}d old) — get.sh is not pulling; run: git -C $SCRIPT_DIR pull && $SCRIPT_DIR/bootstrap.sh"
+    else
+        p "kit $KITV ($KITD)"
+    fi
+fi
+
+if is_dcv_terminal; then
+    APPLIED=$(cat /opt/asp/applied-version 2>/dev/null || echo none)
+    if [ "$APPLIED" = none ]; then
+        s "no platform release applied yet (/opt/asp/applied-version absent)"
+    else
+        p "platform release $APPLIED"
+    fi
+    # auto-update.sh writes this ONLY while it is refusing to apply something,
+    # so its presence is the honest "you are behind, and here is why" signal.
+    DEFER=/var/lib/asp/update-deferred.json
+    if [ -r "$DEFER" ]; then
+        DEFMSG=$(asp_defer_summary "$DEFER")
+        DEFH=${DEFMSG%%|*}
+        if [ -n "$DEFMSG" ] && [ "${DEFH:-0}" -ge 72 ]; then
+            f "release ${DEFMSG#*|} — stuck past 72h; something is holding this box on the old release"
+        elif [ -n "$DEFMSG" ]; then
+            s "release ${DEFMSG#*|} — deferring normally, will retry"
+        else
+            s "a release is deferred but $DEFER could not be read"
+        fi
+    fi
+fi
 echo
 if [ "$FAILED" = 1 ]; then
     warn "verify finished with failures"
