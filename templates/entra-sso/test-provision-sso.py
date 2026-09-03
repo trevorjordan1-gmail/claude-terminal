@@ -38,6 +38,35 @@ assert stat.S_IMODE(os.stat(pk).st_mode)==0o600, "mode not preserved"
 assert 'ENTRA_CLIENT_ID="c-1"' in after and after.count("ENTRA_CLIENT_ID")==1, after
 assert 'ENTRA_CLIENT_SECRET="s~ecret!"' in after and "# comment" in after
 assert m.read_pack(pk)["ENTRA_CLIENT_SECRET"]=="s~ecret!"
+
+# ---------- unit: inline comments are stripped like bash sourcing (field-hit InvalidURL) ----------
+pk2=os.path.join(SCRATCH,"pack2.env")
+open(pk2,"w").write('CLIENT_CODE=acme   # short code\nTEAM_DOMAIN=hidden-resonance-c421 # REAL ZT team prefix\n'
+                    'AIOPS_UPN=aiops@acme-example.com  # the machine mailbox\nMAIL_CAPABILITY="none"  # recorded at SETUP\n'
+                    'APPLIANCE_HOST="host#notacomment.example"\nENTRA_TENANT_ID=\n')
+v=m.read_pack(pk2)
+assert v["CLIENT_CODE"]=="acme" and v["TEAM_DOMAIN"]=="hidden-resonance-c421", v
+assert v["AIOPS_UPN"]=="aiops@acme-example.com" and v["MAIL_CAPABILITY"]=="none", v
+assert v["APPLIANCE_HOST"]=="host#notacomment.example", v   # a # inside quotes is literal
+assert v["ENTRA_TENANT_ID"]=="", v
+print("PASS read_pack strips inline comments (quoted # kept)")
+
+# ---------- unit: MAIL_CAPABILITY=none skips the rider; tenant still derived from the UPN ----------
+class _A: pass
+def _args(**kw):
+    a=_A()
+    for k in ("pack","tenant","code","team","aiops","appliance_host"): setattr(a,k,None)
+    for k in ("no_aiops","defer_redirect","exporter_mail","no_secret","apply","confirm"): setattr(a,k,False)
+    a.secret_months=12
+    for k,val in kw.items(): setattr(a,k,val)
+    return a
+r=m.resolve(_args(), m.read_pack(pk2))
+assert r["aiops_upn"] is None and r["tenant"]=="acme-example.com" and r["code"]=="acme", r
+r=m.resolve(_args(aiops="aiops@acme-example.com"), m.read_pack(pk2))
+assert r["aiops_upn"]=="aiops@acme-example.com", r          # explicit flag overrides the pack's none
+r=m.resolve(_args(), m.read_pack(pk))
+assert r["aiops_upn"]=="aiops@acme-example.com", r          # MAIL_CAPABILITY=both → rider on
+print("PASS MAIL_CAPABILITY=none → no rider (flag overrides); tenant derived either way")
 assert "EXPIRES" not in after, "#17 regression: per-credential expiry field written to pack"
 print("PASS pack round-trip — existing key replaced in place, mode 0600 kept, comment kept, no *_EXPIRES")
 
