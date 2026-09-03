@@ -152,7 +152,17 @@ the Cloudflare proxy, and certbot DNS-01 doesn't care either way.
 Run each via `aws ssm send-command --instance-ids <cp-id> --document-name AWS-RunShellScript --parameters 'commands=[...]'`;
 the pattern for every script: `aws s3 cp s3://<artifacts>/scripts/<x>.sh /opt/asp/<x>.sh && bash /opt/asp/<x>.sh`.
 
-1. `cp-tls.sh` — certbot via Cloudflare DNS-01 (see §1 token warning) + gateway cert deploy-hook.
+1. `cp-tls.sh` — certbot via Cloudflare DNS-01 (see §1 token warning) + gateway cert
+   deploy-hook. It also arms **`asp-cert-check.timer`** (daily), which reports days-to-expiry
+   and pings Healthchecks. That check is deliberately about the **cert**, not the renewal
+   run: renewal can fail because the timer is off, the lineage is missing (a hand-placed cert
+   has no `renewal/*.conf` and will never renew — the failure that went unnoticed until it was
+   found by accident), a deploy hook broke, or the Cloudflare token's IP allowlist does not
+   cover the control plane's own egress EIP. One signal catches all of them. It alerts under
+   21 days, i.e. after certbot's 30-day renewal window has already been missed once, so there
+   is ~3 weeks of runway rather than a morning-of surprise. Triage: `systemctl status
+   certbot.timer`, then `certbot renew --dry-run` — a DNS-01 failure there points at the token
+   allowlist.
 2. `dcv-cp-install.sh` — broker (heap-patched for 2 GB), gateway, publishes broker CA
    to `s3://<artifacts>/certs/`, registers the portal API client
    (`/etc/asp-broker-client.env`). **Idempotent — re-run after certs exist so the

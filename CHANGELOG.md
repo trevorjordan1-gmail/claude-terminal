@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-02 — the TLS cert now has an alarm
+
+#26 gave the control plane a real certbot lineage where it previously had a
+hand-placed cert that would never renew. That fixed the renewal — and created a
+new silent failure, because a renewal that stops working looks exactly like one
+that is working until the morning the cert expires. Same shape as #30, where
+snapshots ran nightly and nobody was told the check was DOWN.
+
+`aws/scripts/cert-expiry-check.sh` runs daily on the control plane
+(`asp-cert-check.timer`, armed by `cp-tls.sh`) and pings Healthchecks: bare when
+healthy, `/fail` otherwise.
+
+It checks the **certificate**, not the renewal run — deliberately. A failed-unit
+alarm only catches renewals that ran and failed. Days-to-expiry also catches the
+timer being disabled, the lineage being missing (a hand-placed cert has no
+`renewal/*.conf` at all, which is the #26 field case and reports `UNMANAGED`
+even with months left), a broken deploy hook, and the Cloudflare token's IP
+allowlist not covering the control plane's egress so DNS-01 fails. One signal,
+every cause — PLATFORM-BUILD §5's rule that you alert on staleness, not only on
+error.
+
+The threshold is 21 days because certbot renews at 30: under 21, a renewal
+window has already been missed, so the alert arrives with about three weeks of
+runway. A failed ping can never change the verdict.
+
 ## 2026-09-02 — one sign-in rule, stated once (#32 item 4)
 
 The Entra sign-in was described in four places, each slightly differently, and
