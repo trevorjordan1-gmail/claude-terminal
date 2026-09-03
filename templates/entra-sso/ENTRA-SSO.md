@@ -29,8 +29,13 @@ service-token probe ever exercises this redirect.
 
 - **Managed tenant (adNET holds admin) — Claude runs it, one sign-in (the default):**
   ```
-  python3 ~/claude-terminal/templates/entra-sso/provision-sso.py --pack ~/Projects/<code>.tools/.env [--apply]
+  python3 ~/claude-terminal/templates/entra-sso/provision-sso.py --pack ~/Projects/<code>.tools/.env --confirm
   ```
+  `--confirm` prints the plan, takes a typed `APPLY`, and writes with the SAME token — one
+  Global-Admin sign-in, not two (dry-run then `--apply` was the field complaint). Plain
+  dry-run / `--apply` still work for the two-step habit. The pack's `MAIL_CAPABILITY=none`
+  skips the aiops mail rider + owner (SETUP recorded that skip; the registration must not
+  contradict it) — `--aiops` overrides explicitly.
   Two optional extras, both OFF unless asked for (#24). `--exporter-mail` (or pack
   `EXPORTER_MAIL=true`) additionally **declares** the Graph *application* role `Mail.Read`
   so the appliance's one-click adminconsent has something to grant — no second Global-Admin
@@ -52,7 +57,8 @@ service-token probe ever exercises this redirect.
   pack — the secret never transits another machine. Auth is the same field-proven
   device-code relay baked in (az-cli client, `.default`, tenant-pinned, polls the full
   15-min window): it prints ONE sign-in link (code pre-filled) and the engineer opens it
-  **from their own device** — admin credentials never touch the box.
+  **from their own device** — admin credentials never touch the box. (Where that sign-in
+  should happen is under review — see issue #32 item 4.)
   - *Alternative, from the engineer's own machine:* any PowerShell,
     `./New-ClientSSO.ps1 -ClientCode <code> -TeamName <real-team> -AiopsUpn aiops@<clientdomain>`
     — browser sign-in pops locally. Two minutes. (Or the legacy relay:
@@ -62,7 +68,9 @@ service-token probe ever exercises this redirect.
     token with directory-wide write power. The engineer enters only a code they requested
     seconds ago from this flow and no other; codes are single-use, 15-minute expiry; the
     token lives only in the run's process, never a file that outlives it; one sign-in per
-    operation — a burned call means a fresh sign-in, never a cached token.
+    operation — a burned call means a fresh sign-in, never a cached token. (`--confirm` is
+    one operation: plan + write on one token.) *Where the sign-in should physically happen
+    is under review — see issue #32 item 4.*
 - **External IT holds the tenant:** generate the request one-pager from
   `ENTRA-SSO-REQUEST.template.md` (fill every placeholder from the pack — including the
   REAL team domain), attach the script, send it. They run it (or click through the by-hand

@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-09-02 — first real `provision-sso.py --apply`: three field defects (#32)
+
+`provision-sso.py --apply` ran against a real managed tenant on 2026-08-31 —
+the answer to #27 item 6. The registration was created, the secret landed in
+the pack and Access sign-in works. Three defects surfaced, all fixed here:
+
+- **`read_pack()` kept inline comments.** Every staged pack line carries a
+  trailing ` # comment`, so the tenant derived from `AIOPS_UPN` came out as
+  `acme-example.com  # the machine mailbox` and the device-code request died
+  with `InvalidURL`. `pack_value()` now reads a line the way `. pack.env`
+  would: a quoted value is the quoted text (a `#` inside quotes is literal),
+  an unquoted value ends at the first whitespace-then-`#`.
+- **Two Global-Admin sign-ins per mint.** Dry-run then `--apply` meant two
+  sign-ins minutes apart. `--confirm` does both on one: print the plan, take a
+  typed `APPLY`, write with the same in-process token. `main()` splits into
+  `resolve()` (everything decided before the token) and `provision()`, which
+  also makes the pack contract testable without a token. Plain dry-run and
+  `--apply` are unchanged.
+- **`MAIL_CAPABILITY=none` was ignored.** SETUP step 6 had recorded "no machine
+  mailbox in this engagement" and the script consented `Mail.*` for the aiops
+  principal anyway, so the registration contradicted the recorded skip. `none`
+  now skips the rider and owner (printed); an explicit `--aiops` overrides; the
+  tenant is still derived from the pack's UPN domain either way.
+
+Self-test grows two checks: inline comments (including a quoted `#` that must
+survive), and `MAIL_CAPABILITY=none` skipping the rider with the flag override.
+
+**Not taken: the relay-flow venue wording** (issue #32 item 4). The templates
+say the Global-Admin sign-in happens on the engineer's own device, "never this
+box"; the field proposes a private window on the terminal itself via the DCV
+session. That is a security-posture change, not a defect fix — it decides
+whether Global-Admin credentials are typed into a browser running on a
+client-facing terminal — so it is held for the operator. The wording now points
+at the issue instead of pretending the contradiction is not there.
+
 ## 2026-09-02 — `verify.sh` answers "am I up to date?"
 
 There were three separate version clocks on a box and nothing reported them

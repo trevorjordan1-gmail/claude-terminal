@@ -33,9 +33,16 @@ because `common` degrades to AADSTS50059 after repeated mints). The script print
 link; a Global Administrator opens it FROM THEIR OWN DEVICE — admin credentials never touch
 the box running this. Codes are single-use, ~15-minute expiry, one sign-in per run; the token
 lives only in this process. A run that dies mid-way = fresh sign-in, never a cached token.
+(Where that sign-in should happen is under review — see issue #32 item 4.)
 
 DRY-RUN BY DEFAULT (still requires the sign-in; all reads are real, writes are printed).
-Add --apply to write.
+Add --apply to write. Add --confirm instead to do both on ONE sign-in: the plan is printed,
+the engineer types APPLY, and the same in-process token writes it — two Global-Admin
+sign-ins within minutes (dry-run, then --apply) was the field complaint.
+
+MAIL_CAPABILITY in the pack gates the aiops mail rider: `none` (SETUP recorded "no machine
+mailbox in this engagement") means the rider + owner are SKIPPED unless --aiops is given
+explicitly — otherwise the paper trail contradicts SETUP's recorded skip.
 
 Usage (on the terminal, from the workspace):
   python3 ~/claude-terminal/templates/entra-sso/provision-sso.py --pack ~/Projects/<code>.tools/.env [--apply]
@@ -44,7 +51,8 @@ Usage (on the terminal, from the workspace):
       --team <real-zt-team-prefix> --aiops aiops@acme-example.com [--apply]
 
 --pack reads CLIENT_CODE, TEAM_DOMAIN, AIOPS_UPN, ENTRA_TENANT_ID, APPLIANCE_HOST,
-EXPORTER_MAIL (tenant fallback: the aiops UPN's domain) and, on --apply, writes
+EXPORTER_MAIL, MAIL_CAPABILITY (tenant fallback: the aiops UPN's domain; inline ` # comments`
+on pack lines are stripped the way bash sourcing would) and, on --apply, writes
 ENTRA_TENANT_ID / ENTRA_CLIENT_ID / ENTRA_CLIENT_SECRET / ENTRA_ADMIN_DOMAIN back into the
 same file (mode preserved). ENTRA_ADMIN_DOMAIN is the tenant's initial
 `<slug>.onmicrosoft.com`, read from Graph while the GA token is in hand so Zero Trust
@@ -110,7 +118,21 @@ def parse_args():
     p.add_argument("--secret-months", type=int, default=12)
     p.add_argument("--no-secret", action="store_true")
     p.add_argument("--apply", action="store_true", help="write; default is dry-run")
+    p.add_argument("--confirm", action="store_true",
+                   help="dry-run, then ask for a typed APPLY and write with the SAME token — one sign-in instead of two")
     return p.parse_args()
+
+
+def pack_value(raw):
+    """One pack value the way `. pack.env` would see it: a quoted value is the quoted text
+    (a # inside quotes is literal); an unquoted value ends at the first whitespace-then-#.
+    Field-hit: every staged pack line carries an inline ` # comment`, and the raw text
+    reached a URL (InvalidURL on the device-code request)."""
+    v = raw.strip()
+    m = re.match(r"^([\"'])(.*?)\1", v)
+    if m:
+        return m.group(2)
+    return re.split(r"\s+#", v, 1)[0].strip()
 
 
 def read_pack(path):
@@ -118,7 +140,7 @@ def read_pack(path):
     for line in open(path):
         m = re.match(r'^([A-Z][A-Z0-9_]*)=(.*)$', line.strip())
         if m:
-            vals[m.group(1)] = m.group(2).strip().strip('"').strip("'")
+            vals[m.group(1)] = pack_value(m.group(2))
     return vals
 
 
@@ -187,25 +209,60 @@ class Graph:
         return self.call("GET", path, soft=soft)
 
 
-def main():
-    a = parse_args()
-    pack = read_pack(a.pack) if a.pack else {}
+def resolve(a, pack):
+    """Everything decided BEFORE the sign-in — kept apart from provision() so the self-test
+    can check the pack contract without a token."""
     code = a.code or pack.get("CLIENT_CODE") or sys.exit("--code (or pack CLIENT_CODE) required")
     team = a.team or pack.get("TEAM_DOMAIN")
     exporter = a.exporter_mail or truthy(pack.get("EXPORTER_MAIL"))
     appliance = a.appliance_host or pack.get("APPLIANCE_HOST")
-    aiops_upn = None if a.no_aiops else (a.aiops or pack.get("AIOPS_UPN"))
-    tenant = a.tenant or pack.get("ENTRA_TENANT_ID") or (aiops_upn.split("@")[1] if aiops_upn else None) \
+    pack_upn = pack.get("AIOPS_UPN")
+    mail_cap = (pack.get("MAIL_CAPABILITY") or "").strip().lower()
+    if a.no_aiops:
+        aiops_upn = None
+    elif a.aiops:
+        aiops_upn = a.aiops                      # an explicit flag always wins
+    elif mail_cap == "none":
+        aiops_upn = None                         # SETUP recorded "no machine mailbox" — honour it
+        print("  MAIL_CAPABILITY=none in the pack → aiops mail rider + owner SKIPPED (pass --aiops to override)")
+    else:
+        aiops_upn = pack_upn
+    # the tenant may still be derived from the pack's UPN domain even when the rider is skipped
+    any_upn = a.aiops or pack_upn or ""
+    upn_domain = any_upn.split("@")[1] if "@" in any_upn else None
+    tenant = a.tenant or pack.get("ENTRA_TENANT_ID") or upn_domain \
         or sys.exit("--tenant required (no pack ENTRA_TENANT_ID / AIOPS_UPN to derive it from)")
     if not team and not a.defer_redirect:
         sys.exit("--team (pack TEAM_DOMAIN) required — the REAL Zero Trust team prefix; a guessed one breaks every "
                  "staff sign-in (AADSTS50011). Zero Trust not bootstrapped yet? pass --defer-redirect and re-run later.")
+    return dict(code=code, team=team, exporter=exporter, appliance=appliance, aiops_upn=aiops_upn, tenant=tenant)
+
+
+def main():
+    a = parse_args()
+    pack = read_pack(a.pack) if a.pack else {}
+    r = resolve(a, pack)
+    g = Graph(device_token(r["tenant"]), a.apply)
+    provision(g, a, pack, **r)
+    if a.confirm and not a.apply:
+        try:
+            answer = input("\nType APPLY to write the plan above with this same sign-in (anything else aborts): ")
+        except EOFError:
+            answer = ""
+        if answer.strip() != "APPLY":
+            print("Not applied. Nothing was written.")
+            return
+        g.apply = True
+        print("\n== applying with the same token ==")
+        provision(g, a, pack, **r)
+
+
+def provision(g, a, pack, code, team, exporter, appliance, aiops_upn, tenant):
     name = f"{code}-sso"
     redirect = f"https://{team}.cloudflareaccess.com/cdn-cgi/access/callback" if team else None
     redirects = [u for u in (redirect, settings_uri(appliance)) if u]
 
-    g = Graph(device_token(tenant), a.apply)
-    print(f"== {name} · tenant {tenant} · {'APPLY' if a.apply else 'DRY-RUN (add --apply to write)'} ==")
+    print(f"== {name} · tenant {tenant} · {'APPLY' if g.apply else 'DRY-RUN (add --apply to write, or --confirm to write on this sign-in)'} ==")
     graph_sp = g.get(f"servicePrincipals?$filter=appId eq '{GRAPH_APPID}'&$select=id,appId,appRoles,oauth2PermissionScopes")["value"][0]
     scope_id = {s["value"]: s["id"] for s in graph_sp["oauth2PermissionScopes"]}
     access = [{"id": scope_id[v], "type": "Scope"} for v in SIGNIN + MAIL]
@@ -304,12 +361,12 @@ def main():
             end = add_months(datetime.now(timezone.utc), a.secret_months).strftime("%Y-%m-%dT%H:%M:%SZ")
             r = g.call("POST", f"applications/{app_id}/addPassword",
                        {"passwordCredential": {"displayName": SECRET_LABEL, "endDateTime": end}})
-            if a.apply:
+            if g.apply:
                 secret, expires = r["secretText"], end
 
     # 4 — hand-back
     admin_domain = pack.get("ENTRA_ADMIN_DOMAIN")
-    if a.apply:
+    if g.apply:
         org = g.get("organization?$select=id,verifiedDomains")["value"][0]
         org_tenant = org["id"]
         # the initial <slug>.onmicrosoft.com — Zero Trust policies need staff domain AND
@@ -323,7 +380,7 @@ def main():
         out["ENTRA_ADMIN_DOMAIN"] = admin_domain
     if secret:
         out["ENTRA_CLIENT_SECRET"] = secret
-    if a.pack and a.apply:
+    if a.pack and g.apply:
         write_pack(a.pack, out)
         print(f"\nPACK UPDATED: {a.pack} ← {' '.join(out)}  (secret went straight into the pack — it is shown nowhere else;"
               f"\n  vault it per HANDOFF-TO-HUDU)")
