@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-09-02 — the nightly backup never pinged Healthchecks (#30)
+
+A terminal migrated from the cron-era backup script to `asp-backup.timer` — the
+right fix, since the box hibernates through the cron hour — kept taking nightly
+restic snapshots while its Healthchecks check showed **DOWN for 12 days**. The
+snapshots were fine the entire time. The old cron script pinged; the generated
+`backup-run.sh` never did, so the migration silently dropped monitoring.
+
+The failure mode is worse than no monitoring: a check that reads DOWN while
+backups are healthy invites an emergency response to the wrong problem, and it
+teaches people to distrust the alert.
+
+- **The ping is now part of the job.** `backup-run.sh` pings `/fail` on the init
+  and backup error paths and bare on success, so the check alerts on **silence**
+  (never ran) and on **failure** (ran, broke) — the two ways a timer on a
+  hibernating fleet goes wrong. With no URL configured it is a no-op, so the
+  script still works with no monitoring account. A failed ping can never fail
+  the backup.
+- **`backup-arm.sh` resolves the URL** from, in order: `HEALTHCHECK_URL` in the
+  arm-time environment (or `ASP_BACKUP_HC_URL` in `/etc/asp-terminal.env`); a
+  `HEALTHCHECKS_API_KEY` in the tenant config, which upserts a check named
+  `backup-<client>-<machine>` (unique on the name, so re-arming is idempotent);
+  the value the previous `/etc/asp-backup.env` carried, so **re-arming never
+  drops monitoring**; or none, said out loud on the arm line.
+- **`backups.md` gains a Monitoring section and the triage rule that matters:
+  a DOWN check is a claim about pings, not about snapshots.** `restic snapshots`
+  is the ground truth. Fresh snapshots plus a DOWN check is a monitoring gap;
+  stale snapshots are a backup problem.
+
+**Operator action:** boxes armed before this have no `HEALTHCHECK_URL` line.
+Re-run `backup-arm.sh` over SSM — with `HEALTHCHECKS_API_KEY` in the tenant
+config it mints the check, or pass `HEALTHCHECK_URL=<existing ping url>` to keep
+one that already exists. New boxes arm with the ping at build.
+
 ## 2026-09-02 — first real `provision-sso.py --apply`: three field defects (#32)
 
 `provision-sso.py --apply` ran against a real managed tenant on 2026-08-31 —
