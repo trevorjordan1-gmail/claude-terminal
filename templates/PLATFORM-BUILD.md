@@ -100,9 +100,8 @@ Access application per hostname (`status.<CLIENT_DOMAIN>` now; NEW-APP adds one 
   It builds the one-per-client registration with the REAL `TEAM_DOMAIN` callback (+ the
   aiops mail rider unless the pack says `MAIL_CAPABILITY=none`) and writes `ENTRA_*`
   straight into the pack; the single human act is the engineer opening the printed
-  sign-in link **from their own device** (ENTRA-SSO.md relay discipline: admin
-  credentials never touch the box, token only in the process). *Where that sign-in
-  should physically happen is under review — see issue #32 item 4.*
+  sign-in link: **open it in a private window, sign in, close the window** (any device,
+  this desktop included — ENTRA-SSO.md states the rule once and is the place to change it).
   Then wire the Entra login method into Zero Trust (API) and the policies allow the
   client's staff via Entra: `@CLIENT_STAFF_DOMAIN` + `@<tenant>.onmicrosoft.com`, nothing
   else (no personal adNET emails) — normal M365 sign-in, MFA applies, Entra offboarding

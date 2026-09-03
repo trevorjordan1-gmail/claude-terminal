@@ -30,10 +30,11 @@ What one --apply run ensures (same object model as New-ClientSSO.ps1):
 Auth = the field-proven device-code relay (see get-graph-token-devicecode.sh: az-cli
 first-party client, `.default` scopes — explicit admin scopes trip AADSTS65002 — TENANT-PINNED
 because `common` degrades to AADSTS50059 after repeated mints). The script prints ONE sign-in
-link; a Global Administrator opens it FROM THEIR OWN DEVICE — admin credentials never touch
-the box running this. Codes are single-use, ~15-minute expiry, one sign-in per run; the token
-lives only in this process. A run that dies mid-way = fresh sign-in, never a cached token.
-(Where that sign-in should happen is under review — see issue #32 item 4.)
+link. The engineer opens it in a private window, signs in as a Global Administrator, and
+closes the window — any device, including this desktop. The one rule is to use only a link
+this run just printed, never a code from anywhere else. Codes are single-use with a ~15-minute
+expiry, one sign-in per run, and the token lives only in this process — a run that dies
+mid-way just means running it again.
 
 DRY-RUN BY DEFAULT (still requires the sign-in; all reads are real, writes are printed).
 Add --apply to write. Add --confirm instead to do both on ONE sign-in: the plan is printed,
@@ -166,9 +167,10 @@ def device_token(tenant):
     d = json.load(urllib.request.urlopen(urllib.request.Request(
         base + "/devicecode", data=urllib.parse.urlencode(
             {"client_id": AZCLI, "scope": f"https://graph.microsoft.com/.default offline_access openid profile"}).encode())))
-    print(f"\n>>> ONE sign-in, from YOUR OWN device (never this box), as a Global Administrator of the client tenant:\n"
+    print(f"\n>>> Sign in as a Global Administrator of the client tenant:\n"
           f">>>   https://login.microsoftonline.com/common/oauth2/deviceauth?otc={d['user_code']}\n"
-          f">>>   (or {d['verification_uri']} → code {d['user_code']})\n"
+          f">>> Open it in a private window, sign in, close the window. Any device, this one included.\n"
+          f">>>   (no link? {d['verification_uri']} → code {d['user_code']})\n"
           f">>> Single-use, expires in {d['expires_in']//60} min. Waiting…\n", flush=True)
     deadline = time.time() + d["expires_in"]
     while time.time() < deadline:

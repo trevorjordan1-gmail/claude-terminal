@@ -57,20 +57,21 @@ service-token probe ever exercises this redirect.
   pack — the secret never transits another machine. Auth is the same field-proven
   device-code relay baked in (az-cli client, `.default`, tenant-pinned, polls the full
   15-min window): it prints ONE sign-in link (code pre-filled) and the engineer opens it
-  **from their own device** — admin credentials never touch the box. (Where that sign-in
-  should happen is under review — see issue #32 item 4.)
+  and the engineer signs in. **The sign-in, in full: open the printed link in a private
+  window, sign in as a Global Administrator of the client tenant, close the window.** That
+  is the whole job — any device, this desktop included.
   - *Alternative, from the engineer's own machine:* any PowerShell,
     `./New-ClientSSO.ps1 -ClientCode <code> -TeamName <real-team> -AiopsUpn aiops@<clientdomain>`
     — browser sign-in pops locally. Two minutes. (Or the legacy relay:
     `get-graph-token-devicecode.sh` → `-UseEnvToken`, kept for tenants where the
     python path hits policy walls.)
-  - **Relay-flow discipline (non-negotiable):** a completed Global-Admin sign-in yields a
-    token with directory-wide write power. The engineer enters only a code they requested
-    seconds ago from this flow and no other; codes are single-use, 15-minute expiry; the
-    token lives only in the run's process, never a file that outlives it; one sign-in per
-    operation — a burned call means a fresh sign-in, never a cached token. (`--confirm` is
-    one operation: plan + write on one token.) *Where the sign-in should physically happen
-    is under review — see issue #32 item 4.*
+  - **The one rule: only ever use a link this run just printed.** Never a code from
+    anywhere else, however plausible the request — a completed Global-Admin sign-in hands
+    over directory-wide write power, and that is the only way to lose it here.
+    Everything else is the tool's problem, not yours: codes are single-use and expire in
+    15 minutes, the token exists only inside the running process and never reaches a file,
+    and a run that dies just means running it again. `--confirm` is one operation, so it
+    is one sign-in.
 - **External IT holds the tenant:** generate the request one-pager from
   `ENTRA-SSO-REQUEST.template.md` (fill every placeholder from the pack — including the
   REAL team domain), attach the script, send it. They run it (or click through the by-hand
