@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-09-03 — Switcher window picker on Alt+` (#37)
+
+A Claude Code terminal is many `gnome-terminal` windows told apart by their
+**title**, and GNOME's Alt-Tab groups them all under one application icon, so it
+cannot pick between them. Standalone pickers (rofi) ghost through the Hyper-V
+console and RustDesk; Switcher draws inside the shell, which is the only kind of
+popup that renders cleanly there.
+
+`modules/core/46-switcher.sh` installs Switcher from extensions.gnome.org
+matched to the box's own GNOME Shell version, enables it, binds `Alt+\``, and
+frees that combo from GNOME's `switch-group` (which otherwise wins; `Super+\``
+still cycles a group).
+
+**Three local patches ship with the kit** (`assets/switcher/`), because upstream
+v41 has no setting for any of them: activate before dropping the modal grab (a
+real upstream bug — the button release otherwise falls through and click-to-focus
+steals focus from the window just raised), hide installed-but-not-running apps
+from the list, and exclude the RustDesk console by WM_CLASS.
+
+The interesting part is keeping them applied. An extension update overwrites the
+files and silently reverts all three, so `switcher-patches.path` re-runs the
+applier whenever a patched file changes. The applier is marker-keyed and
+idempotent, keeps a `.orig-v<ver>` backup, applies whatever still applies, and
+**exits 1 naming the file when a patch no longer fits** — and `verify.sh` checks
+the same three markers, so an upstream bump that breaks the fleet shows up in
+the scorecard rather than in a `notify-send` on a box nobody is looking at.
+
+**Core rather than an extra, deliberately:** `get.sh` execs `bootstrap.sh "$@"`
+and the fleet's unattended update passes no arguments, so an extra would never
+install itself on any box and would never re-run to re-patch. Every failure path
+SKIPs — no GNOME, no bus to write settings with, no build for this shell
+version, a failed download — because a missing window picker must never be the
+reason a bootstrap stops.
+
+Settings go through `gui_conf`, never a bare `gsettings set`: with no user bus
+the latter exits 0 while writing nothing (the defect behind 43b6e27), which
+would leave `Alt+\`` silently unbound.
+
 ## 2026-09-02 — the TLS cert now has an alarm
 
 #26 gave the control plane a real certbot lineage where it previously had a

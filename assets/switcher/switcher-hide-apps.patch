@@ -1,0 +1,16 @@
+--- modes/launcher.js
++++ modes/launcher.js
+@@ -25,7 +25,13 @@
+     Convenience.setJson('launcher-stats', stats);
+   };
+ 
++  // Local patch: hide launchable (not running) apps from the Alt+` view.
++  // The user only wants open windows listed. An empty list keeps every caller
++  // in extension.js working; they simply have nothing to append after windows.
++  const HIDE_LAUNCHABLE_APPS = true;
++
+   let apps = function () {
++    if (HIDE_LAUNCHABLE_APPS) return [];
+     try {
+       return modeUtils
+         .shellApps()
