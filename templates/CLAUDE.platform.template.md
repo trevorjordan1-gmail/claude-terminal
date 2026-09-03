@@ -127,10 +127,12 @@ Cloudflare tunnel (catch-all → Traefik) + Access · shared Postgres, db-per-ap
 Healthchecks.io monitoring + status.{{CLIENT_DOMAIN}} · restic → Wasabi nightly with
 automated restore-verify. Until then: "platform not yet built — see STATE.md."}}
 
-**This terminal** ({{HOSTNAME}}): the builder's Claude Code Terminal — no Docker here;
-builds and containers run on the droplet. Environment work ran on adNET's seat;
-{{after handoff:}} this terminal runs on {{BUILDER_NAME}}'s seat, commits stamped
-`{{BUILDER_NAME}} <{{BUILDER_EMAIL}}>`.
+**This terminal** ({{HOSTNAME}}): the Claude Code Terminal for this engagement — no Docker
+here; builds and containers run on the droplet. {{ENGAGEMENT=build: Environment work ran
+on adNET's seat; after handoff this terminal runs on {{BUILDER_NAME}}'s seat, commits
+stamped `{{BUILDER_NAME}} <{{BUILDER_EMAIL}}>`. · ENGAGEMENT=adopt: there is no builder
+handoff — this terminal stays on the operator's seat for the engagement, commits stamped
+`Ai Ops <{{AIOPS_UPN}}>`, and stage 6 is the product deploy (PRODUCT-APP.md).}}
 
 ## Reaching the droplet
 

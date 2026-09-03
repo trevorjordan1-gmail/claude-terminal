@@ -26,7 +26,10 @@ deployment that looks right and sits outside everything the platform proves.
    droplet, carried there via the pack. It authenticates *on the customer's behalf* — it is theirs
    to hold. A credential that authenticates **to the vendor** instead (filing issues, fetching
    private docs) is not: keep it terminal-local, outside `~/Projects/`, and pass it per command so
-   the identity switch is visible where it happens rather than hidden in a config file.
+   the identity switch is visible where it happens rather than hidden in a config file. The
+   convention, so two terminals do not invent two: `~/.config/adnet/<product>.env` (0600) holding
+   `<PRODUCT>_ISSUES_TOKEN`, used as `GH_TOKEN="$<PRODUCT>_ISSUES_TOKEN" gh issue create -R <vendor>/<product> …`
+   — never exported into the shell, never in the pack.
 
 2. **Delete the product's database service.** Its compose almost certainly ships its own Postgres,
    because its dev box had none to share. This platform has exactly one instance with per-app
@@ -42,7 +45,10 @@ deployment that looks right and sits outside everything the platform proves.
 4. **Pin an exact tag. Never `:latest`, and no auto-update.** This matters most when the image runs
    migrations at container start: a floating tag plus any unattended pull applies a schema change
    to live customer data at a moment nobody chose. Pinned, "what schema is this client on?" is a
-   fact you read out of a file.
+   fact you read out of a file. **The pack carries that fact:** `<PRODUCT>_IMAGE=ghcr.io/<org>/<product>:<tag>`,
+   written at the accounts pass and updated by whoever cuts each release — the pull token can
+   pull but cannot list packages or read the vendor repo, so the current tag is not discoverable
+   from this box (field-hit: it took the issues token's repo read to find it).
 
 5. **Snapshot before any release that carries migrations.** `IF NOT EXISTS`-safe means
    **re-runnable, not reversible** — an easy sentence to misread. Nothing in a forward-only

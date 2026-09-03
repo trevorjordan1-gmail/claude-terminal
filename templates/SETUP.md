@@ -23,7 +23,11 @@ you need is in the staged file — do not ask for keys or the client code.
    not a display name. If the file is missing, stop and say so — the accounts pass
    (onboarding stage 2) isn't done.
 3. You are logged in on **adNET's Claude seat** (environment work carries no client data).
-   At builder handoff this seat logs out and the builder signs in with theirs.
+   `ENGAGEMENT=build`: at builder handoff this seat logs out and the builder signs in with
+   theirs. `ENGAGEMENT=adopt` (or `BUILDER_NAME="Ai Ops"`, the recognised no-human-builder
+   sentinel): there is no builder and **no seat swap** — the machine identity is the git
+   author for the life of the engagement and stage 6 is the product deploy
+   (`PRODUCT-APP.md`), not a build day.
 
 ## The run
 
@@ -45,7 +49,9 @@ Then, in order:
        nested app folders: `*.<CLIENT_DOMAIN>/` (each app is its OWN repo — the platform
        repo must never swallow one)
      - `scripts/` ← copy `templates/workspace-status.sh` + `templates/pack-verify.sh` +
-       `templates/aiops-mail.sh` (+ make executable)
+       `templates/aiops-mail.sh` + `templates/platform-verify.sh` +
+       `templates/restic-snapshots-age.sh` (+ make executable) — the battery runs from
+       `scripts/` and ships the restic helper to the droplet at PLATFORM-BUILD §6
    - `~/Projects/os-changes/` and `~/Projects/misc/` — create if missing (the launcher
      stamps their CLAUDE/README files; you may stamp them now using the same content).
 2. **Move the keys home:** `mv ~/Projects/.env ~/Projects/<CLIENT_DOMAIN>/.env && chmod 600` —
@@ -65,6 +71,10 @@ Then, in order:
      `git config credential.helper '!f() { test "$1" = get && printf "username=x-access-token\npassword=%s\n" "$GITHUB_PAT"; }; f'`
    - Create the private repo `<GITHUB_ORG>/<CLIENT_DOMAIN>` (`GH_TOKEN="$GITHUB_PAT" gh repo create …`),
      wiki/projects off, Dependabot alerts on. Folder name == repo name == domain — the law.
+     `gh api` booleans take **`-F`**, not `-f` (`-F has_projects=false`; `-f` sends the
+     string "false" and the PATCH silently no-ops — field-hit twice). After a push, poll
+     `gh run list --commit <sha> --json status,conclusion`; `gh run watch` cannot pick a
+     run non-interactively right after a push.
    - First commit + push. **Run the pre-commit secret check before every commit** (it's in
      the platform CLAUDE.md; GitHub Free private repos have NO server-side net).
 5. **Verify the pack empirically:** `bash scripts/pack-verify.sh` (from the workspace) —
@@ -98,7 +108,9 @@ Then, in order:
    - If `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` are in the pack: run
      `scripts/aiops-mail.sh login` and RELAY the printed device code to the engineer — they
      sign in **AS the aiops account** (creds + TOTP from Hudu; the tool refuses and drops
-     the token if any other identity signs in). Then `scripts/aiops-mail.sh verify` — a
+     the token if any other identity signs in) **from their own device** (the one relay
+     rule, stated in ENTRA-SSO.md; where the sign-in should physically happen is under
+     review — see issue #32 item 4). Then `scripts/aiops-mail.sh verify` — a
      self-send round-trip probe that cleans up after itself; its PASS lines go in STATE.md.
    - If `ENTRA_*` hasn't landed (external-IT lead time): record "aiops mail pending ENTRA_*"
      in STATE.md and continue — nothing blocks; run login+verify when the values land.

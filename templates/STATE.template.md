@@ -24,7 +24,9 @@ blocked on whom.}}
 ⬜ Stage 4  PLATFORM BUILD — droplet hardened → tunnel → edge → Access → Postgres
             (isolation PROVEN) → Healthchecks → status.{{CLIENT_DOMAIN}} →
             restic + restore-verify → platform-verify battery PASSED
-⬜ Stage 6  Build day — builder handoff (own password, own seat), first real app
+⬜ Stage 6  {{ENGAGEMENT=build: Build day — builder handoff (own password, own seat),
+            first real app · ENGAGEMENT=adopt: Adoption deploy — the product on this
+            platform per PRODUCT-APP.md (no human builder, no seat swap)}}
 ⬜ Stage 7  Billing — cards swapped to the client (inside Wasabi's 30-day trial!)
 ⬜ Stage 8  Handoff — exit gate: everything owned, documented, drilled
 ```
