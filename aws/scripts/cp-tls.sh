@@ -80,4 +80,51 @@ HOOK
 chmod +x /etc/letsencrypt/renewal-hooks/deploy/asp-gateway.sh
 /etc/letsencrypt/renewal-hooks/deploy/asp-gateway.sh
 
+# ---- expiry alarm ------------------------------------------------------------------
+# Renewals now exist, which means they can now fail -- and the failure is silent by
+# construction: everything keeps working until the morning it does not. #30 was the same
+# shape on the backup side (snapshots fine, nobody told). Alert on staleness, not on error.
+HC_URL="${CERT_HEALTHCHECK_URL:-${ASP_CERT_HC_URL:-}}"
+if [ -z "$HC_URL" ] && [ -n "${HEALTHCHECKS_API_KEY:-}" ]; then
+  HC_URL=$(curl -fsS -m 15 -X POST -H "X-Api-Key: $HEALTHCHECKS_API_KEY" \
+    -d "{\"name\":\"cert-${ASP_CUSTOMER:-cp}\",\"tags\":\"asp tls\",\"timeout\":86400,\"grace\":86400,\"unique\":[\"name\"]}" \
+    "https://healthchecks.io/api/v3/checks/" 2>/dev/null \
+    | python3 -c 'import json,sys;print(json.load(sys.stdin).get("ping_url",""))' 2>/dev/null) || HC_URL=""
+fi
+if [ -z "$HC_URL" ] && [ -f /etc/asp-cert.env ]; then
+  # shellcheck source=/dev/null  # the file this script wrote last time
+  HC_URL=$(. /etc/asp-cert.env 2>/dev/null; printf '%s' "${CERT_HEALTHCHECK_URL:-}")
+fi
+( umask 077; printf "CERT_HEALTHCHECK_URL='%s'\n" "$HC_URL" > /etc/asp-cert.env )
+
+install -m 0755 "$(dirname "$0")/cert-expiry-check.sh" /opt/asp/cert-expiry-check.sh 2>/dev/null \
+  || echo "cp-tls: cert-expiry-check.sh not alongside this script — copy it to /opt/asp/ by hand" >&2
+cat > /etc/systemd/system/asp-cert-check.service <<'UNIT'
+[Unit]
+Description=Check how close the control-plane TLS cert is to expiry
+
+[Service]
+Type=oneshot
+ExecStart=/opt/asp/cert-expiry-check.sh
+UNIT
+cat > /etc/systemd/system/asp-cert-check.timer <<'UNIT'
+[Unit]
+Description=Daily control-plane TLS expiry check
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now asp-cert-check.timer >/dev/null 2>&1
+if [ -n "$HC_URL" ]; then
+  echo "cp-tls: expiry alarm armed (daily; pings Healthchecks)"
+else
+  echo "cp-tls: expiry alarm armed WITHOUT a ping — set HEALTHCHECKS_API_KEY or CERT_HEALTHCHECK_URL; it will only log locally" >&2
+fi
+
 echo "TLS ready"
