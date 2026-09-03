@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-02 — doctl in the base module (#36)
+
+`PLATFORM-BUILD` step 1 is doctl-driven and no box had `doctl` — it is not in
+Ubuntu's apt, so the image shipped `restic`/`jq`/`gh` and stopped there.
+`00-base-cli.sh` now installs the pinned release tarball (`v1.168.0`),
+sha256-verified against the release's own checksums file, arch-aware
+(amd64/arm64), with no snapd dependency. A download or verification failure
+WARNs and continues — a missing convenience must not fail a bootstrap.
+
+The early `ok "all present"` moved below the new block, so doctl is still
+installed on a box where every apt package was already there.
+
+The remaining items in that report — `gh api` booleans needing `-F` (a string
+`false` makes the PATCH silently no-op), polling `gh run list --commit` instead
+of `gh run watch` right after a push, `postgres:18` moving `PGDATA` so the mount
+must be the parent `/var/lib/postgresql` or a major bump starts an empty
+cluster, and `grep -n '{{'` after stamping `deploy.sh` — all landed with #35.
+
 ## 2026-09-02 — HANDOFF-TO-HUDU is append-only; zero-question build fields (#34, #35)
 
 - **`HANDOFF-TO-HUDU.md` is append-only and swept per entry** (#34). It was
