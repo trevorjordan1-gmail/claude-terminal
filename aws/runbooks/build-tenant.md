@@ -316,6 +316,24 @@ booted, while two boxes paused briefly came back as genuine resumes). Activity =
    machine up),
 3. 1-min load ≥ 0.25 (builds, tests, servers).
 
+**`IdlePolicy=pause-on-disconnect` was proposed and declined (operator, 2026-09-03).**
+It came out of a "client disconnected but the box didn't hibernate" report — where the
+investigation found the box legitimately busy for hours on an agent run, i.e. the watchdog
+working correctly. Three reasons it stays declined, so nobody rebuilds it from the same
+symptom:
+
+- **A disconnect is not an intent signal.** A closed lid, a wifi switch, a DCV client crash
+  and a deliberate walk-away are indistinguishable here, and only one of them means "stop".
+  The signals above are OR'd precisely so a disconnect is *necessary but not sufficient*.
+- **It would break jobs, not pause them.** Hibernate preserves RAM but not sockets, so a
+  long agent run resumes with dead connections mid-call — and resume is already this
+  fleet's fragile moment (#28's update race). The feature would manufacture more of them,
+  during work.
+- **The legitimate want is already served by `IdleMinutes`.** Set it to 5 and a terminal
+  pauses five minutes after you disconnect *provided nothing is running*. All
+  pause-on-disconnect would add is ignoring the work check — which is the part that is
+  wrong.
+
 Default: 30 idle minutes → hibernate; never within 15 min of boot (wedge risk).
 **All tunable from the admin page** ("Idle & cost settings": enable/disable,
 idle minutes, sensitivity preset — stored in SSM `/asp/idle/config`; the raw
