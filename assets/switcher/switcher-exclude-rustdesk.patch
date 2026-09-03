@@ -1,0 +1,27 @@
+--- modes/switcher.js
++++ modes/switcher.js
+@@ -39,11 +39,23 @@
+     Main.activateWindow(app);
+   };
+ 
++  // Local patch: hide windows of these apps from the Alt+` list (matched
++  // case-insensitively as a substring of the window's WM_CLASS). RustDesk on
++  // this box is the custom "wtfappsrdlinux-tj" build; it is the remote-access
++  // console itself, never something to switch to.
++  const EXCLUDED_WM_CLASSES = ['wtfappsrdlinux', 'rustdesk'];
++  const isExcluded = function(win) {
++    const cls = (win.get_wm_class() || '').toLowerCase();
++    return EXCLUDED_WM_CLASSES.some(x => cls.includes(x));
++  };
++
+   let apps = function() {
+     // Get all windows in activation order
+     let tabList = global.display.get_tab_list(Meta.TabList.NORMAL, null);
+ 
+-    return tabList.map(tab => ({ app: tab, mode: Switcher, activate }));
++    return tabList
++      .filter(tab => !isExcluded(tab))
++      .map(tab => ({ app: tab, mode: Switcher, activate }));
+   };
+ 
+ 

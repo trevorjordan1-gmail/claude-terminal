@@ -115,6 +115,44 @@ else
     s "~/.claude-mem not present yet (created on first claude session after install)"
 fi
 
+# Switcher window picker (46-switcher). Its whole job is telling terminal windows apart by
+# title, so the checks that matter are the binding and the three patch markers — an
+# extension update silently reverts the patches, and notify-send on a box nobody watches is
+# not a signal. SKIP wherever it was never installed.
+SW="$HOME/.local/share/gnome-shell/extensions/switcher@landau.fi"
+if [ -d "$SW" ]; then
+    if gnome-extensions info switcher@landau.fi 2>/dev/null | grep -qi 'state.*ENABLED'; then
+        p "switcher extension enabled"
+    else
+        f "switcher installed but not enabled — gnome-extensions enable switcher@landau.fi"
+    fi
+    if [ "$(gsettings --schemadir "$SW/schemas" get org.gnome.shell.extensions.switcher show-switcher 2>/dev/null)" = "['<Alt>grave']" ]; then
+        p "switcher bound to Alt+\`"
+    else
+        f "switcher not bound to Alt+\` — re-run ./bootstrap.sh"
+    fi
+    case "$(gsettings get org.gnome.desktop.wm.keybindings switch-group 2>/dev/null)" in
+        *Alt\>Above_Tab*) f "GNOME switch-group still claims Alt+\` — it wins over the switcher" ;;
+        *) p "Alt+\` freed from GNOME switch-group" ;;
+    esac
+    SWBAD=""
+    grep -qF 'Activate BEFORE dropping the modal grab' "$SW/extension.js" 2>/dev/null      || SWBAD="$SWBAD focus-fix"
+    grep -qF 'hide launchable (not running) apps'      "$SW/modes/launcher.js" 2>/dev/null || SWBAD="$SWBAD hide-apps"
+    grep -qF 'EXCLUDED_WM_CLASSES'                     "$SW/modes/switcher.js" 2>/dev/null || SWBAD="$SWBAD exclude-wm"
+    if [ -n "$SWBAD" ]; then
+        f "switcher patches missing:$SWBAD — an extension update reverted them; run ~/.local/bin/switcher-patches"
+    else
+        p "switcher patches present (focus-fix, hide-apps, exclude-wm)"
+    fi
+    if systemctl --user is-active switcher-patches.path >/dev/null 2>&1; then
+        p "switcher-patches.path watching for extension updates"
+    else
+        f "switcher-patches.path inactive — an extension update will silently revert the patches"
+    fi
+else
+    s "switcher not installed (46-switcher skipped: no GNOME, or no build for this shell)"
+fi
+
 # A root-owned XDG dir silently defeats dconf/xdg-mime writes (gsettings still
 # exits 0), so check ownership before trusting any GNOME state below.
 _xdg_bad=""

@@ -1,0 +1,20 @@
+--- extension.js
++++ extension.js
+@@ -123,12 +123,16 @@
+           a,
+           i,
+           (app, modifiers) => {
++            // Activate BEFORE dropping the modal grab (same order as GNOME's
++            // own alt-tab). Popping the grab first lets the mouse release
++            // fall through to the window under the pointer, which then steals
++            // keyboard focus from the window we just raised (X11).
++            app.mode.activate(app.app);
+             if (!(app.mode.name() === 'Launcher' && modifiers.control)) {
+               cleanUIWithFade();
+             } else {
+               setTimeout(checkNewWindows, 50);
+             }
+-            app.mode.activate(app.app);
+           },
+           boxes.length > i ? boxes[i] : {}
+         )

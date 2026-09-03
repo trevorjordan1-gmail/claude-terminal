@@ -177,6 +177,7 @@ keeps its install, and a forgotten one removes itself. Tune with
 | 42-terminal-prefs | seeds GNOME Terminal prefs (Ctrl+C/V copy-paste, 200×50 window) on fresh boxes — never overwrites later tweaks |
 | 43-medical-cues | *medical only:* PHI-approved wallpaper, shell banner, motd |
 | 45-hyperv-qol | fixes over-fast wheel scrolling on Hyper-V/remote mice; adds user to `video` group (only runs on Hyper-V) |
+| 46-switcher | Switcher window picker on Alt+\` — fuzzy, matches window **titles**, so you can pick between many terminals (GNOME's Alt-Tab groups them under one icon). Skips cleanly without GNOME |
 | 50-okular-md | double-clicking a `.md` file opens it rendered (Okular) |
 
 The aliases the core adds (they're the point of the box — remove them from
