@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-02 — `verify.sh` answers "am I up to date?"
+
+There were three separate version clocks on a box and nothing reported them
+together, so the only way to answer the question was to know which files to
+`cat`. `verify.sh` — already the scorecard — now closes with a versions section:
+
+- **Kit version** from `git describe`, plus its commit date. `get.sh` pulls on
+  every run and the fleet runs it daily, so a checkout more than **7 days** old
+  FAILs: that means the pull is not happening, not that nothing shipped. The
+  message carries the exact recovery command.
+- **Platform release** from `/opt/asp/applied-version` (DCV boxes only).
+- **A deferred release**, read from `auto-update.sh`'s breadcrumb. Its presence
+  is the honest "you are behind, and here is why" signal — it exists only while
+  the updater is actively refusing to apply something. Under 72 h it is a SKIP
+  with the reason and age ("deferring normally, will retry"); past 72 h it
+  **FAILs**, matching the threshold the updater itself warns at, so a box quietly
+  stuck on an old release shows up in the scorecard instead of never.
+
+Offline by design — no network call, so it never hangs and never reports
+staleness it could not actually check. The control plane's own portal version is
+not visible from a terminal and is deliberately not guessed at.
+
+`asp_defer_summary` in `lib/common.sh` parses the breadcrumb as JSON (never
+grep) and stays silent on a malformed file, which downgrades to a SKIP.
+
 ## 2026-09-02 — context percentage read 5x high; the window is now learned, not guessed
 
 Field report: the statusline showed `⚠ context 99% — wrap up` while `/context`
