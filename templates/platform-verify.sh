@@ -114,12 +114,20 @@ if command -v jq >/dev/null 2>&1; then
   AD=$(curl -s --max-time 15 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
     "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/access/organizations" \
     | jq -r '.result.auth_domain // empty' 2>/dev/null)
+  # The pack stores the team PREFIX (ENTRA-SSO.md); the API answers the FQDN
+  # (<prefix>.cloudflareaccess.com). Compare prefixes — either spelling in the pack is
+  # accepted (field-hit: a correct platform FAILed on the literal comparison).
+  # `:-` first: TEAM_DOMAIN is UNSET when the pack omits it (the very case the
+  # guard below reports), and this script runs under `set -u`, so expanding it
+  # directly killed the whole battery with "unbound variable" instead of FAILing.
+  TD_PREFIX="${TEAM_DOMAIN:-}"; TD_PREFIX="${TD_PREFIX%.cloudflareaccess.com}"
+  AD_PREFIX="${AD%.cloudflareaccess.com}"
   if [ -z "${TEAM_DOMAIN:-}" ]; then
     result FAIL "TEAM_DOMAIN missing from the pack — record the live auth_domain (${AD:-unreadable}); NEVER derive redirect URIs from CLIENT_CODE" ""
   elif [ -z "$AD" ]; then
     result SKIP "TEAM_DOMAIN drift — /access/organizations unreadable with this token" ""
-  elif [ "$AD" = "$TEAM_DOMAIN" ]; then
-    result PASS "pack TEAM_DOMAIN matches live Zero Trust auth_domain" "$AD"
+  elif [ "$AD_PREFIX" = "$TD_PREFIX" ]; then
+    result PASS "pack TEAM_DOMAIN matches live Zero Trust auth_domain" "pack $TEAM_DOMAIN · live $AD"
   else
     result FAIL "pack TEAM_DOMAIN ($TEAM_DOMAIN) != live auth_domain ($AD) — Entra redirect URIs rendered from the pack are wrong (AADSTS50011)" ""
   fi
@@ -170,9 +178,11 @@ say "> live in STATE.md; this battery checks the steady state."
 
 # ── 5 · backups ─────────────────────────────────────────────────────────────
 say "## 5 · Backups"
+# The helper ships from templates/restic-snapshots-age.sh → /opt/$CODE/backup/ at
+# PLATFORM-BUILD §6 (droplet layout: /opt/<code>/{edge,postgres,backup,scripts,<app fqdn>}/).
 SNAP=$(ssh_run "sudo -n /opt/$CODE/backup/restic-snapshots-age.sh 2>/dev/null || echo none")
 case "$SNAP" in
-  none|"") result SKIP "droplet restic snapshot age (helper missing)" "" ;;
+  none|"") result SKIP "droplet restic snapshot age (helper /opt/$CODE/backup/restic-snapshots-age.sh missing — ship it per PLATFORM-BUILD §6)" "" ;;
   *)
     if echo "$SNAP" | grep -qE 'FRESH'; then
       result PASS "droplet restic snapshot fresh (<26h)" "$SNAP"

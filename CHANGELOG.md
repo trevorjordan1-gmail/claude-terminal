@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-09-02 — platform-verify: TEAM_DOMAIN false FAIL, and a helper it called but nobody shipped (#33)
+
+- **The battery FAILed a correct platform.** The pack stores the Zero Trust team
+  **prefix** (per ENTRA-SSO.md) while `/access/organizations` answers the
+  **FQDN** `<prefix>.cloudflareaccess.com`; the check compared them literally.
+  It now compares prefixes, accepts either spelling in the pack, and prints both
+  in the evidence. A verifier that cries wolf on a correct platform is worse
+  than no verifier — people learn to skip it.
+- **`templates/restic-snapshots-age.sh` is new.** §5 called
+  `/opt/<code>/backup/restic-snapshots-age.sh` and no template ever shipped it,
+  so every platform SKIPped its backup check — the battery quietly not checking
+  the thing it claimed to. Prints one line — FRESH / STALE / NONE, exit 0/1/2 —
+  from `restic snapshots --json --latest 1`, sourcing the backup `.env` beside
+  it. This is the ground-truth half of #30's triage rule: a DOWN monitoring
+  check is a claim about pings; this is a claim about snapshots.
+
+**Fixed on review:** the new prefix comparison expanded `$TEAM_DOMAIN` *before*
+the guard that handles it being missing. `platform-verify.sh` runs under
+`set -u` and the pack omitting `TEAM_DOMAIN` leaves it **unset**, so the whole
+battery would have died with "unbound variable" instead of printing the FAIL —
+in exactly the case the guard exists for, which is the #18 failure it was
+written to catch.
+
 ## 2026-09-02 — the nightly backup never pinged Healthchecks (#30)
 
 A terminal migrated from the cron-era backup script to `asp-backup.timer` — the
