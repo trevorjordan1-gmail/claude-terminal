@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-09-02 — pack-verify: lint the code, keep the errors, record what the API knows (#31)
+
+- **Uppercase `CLIENT_CODE` is now a lint FAIL.** It names S3 buckets, which
+  must be lowercase, so a pack staged with `CLIENT_CODE=ACME` failed the Wasabi
+  probe with `InvalidBucketName` while the keys were fine. Rejected rather than
+  normalised on purpose: a silently lowercased value would leave the pack
+  disagreeing with whatever the accounts pass already created.
+- **Probe stderr is kept.** It was going to `/dev/null`, so a FAIL could only
+  be guessed at — root-causing the above needed a manual re-run with errors
+  visible. A `why` helper now prints the last stderr line under every FAIL.
+  Bucket cleanup also empties via the paginator and retries `delete_bucket`
+  with backoff, since eventual consistency was reporting a spurious cleanup
+  FAIL on otherwise-green runs.
+- **`CF_TOKEN_ID` and `CREDENTIALS_MINTED` are recorded from the API**, not
+  transcribed. Both were reliably empty because the notes say "only on screen
+  at mint time" — but for account-owned tokens
+  `GET /accounts/{id}/tokens/verify` returns the id and `expires_on`, and
+  expiry − 12 months pins the mint date under #17's one-lifetime rule. Only
+  ever fills fields that are **empty**; a value a human set always wins.
+- **Alert routing is linted, not discovered at build time.**
+  `CLIENT_ALERT_EMAILS` and `ADNET_ALERTS_MAILBOX` become FAILs, and a full run
+  counts Healthchecks email channels and FAILs below the two PLATFORM-BUILD §5
+  binds. Channels cannot be API-created, so this is an accounts-pass gap the
+  build cannot close on its own — which is exactly why it belongs at lint.
+- Notes for the zero-question-build fields (`DROPLET_SIZE`, `SSO_AT_BUILD`,
+  `ENGAGEMENT`) and for a missing `doctl`.
+
+**Fixed on review:** `pack_record` interpolated its value into a `sed`
+replacement, where `\` and `&` are special and `|` was the delimiter — and it
+printed its success line regardless of whether `sed` succeeded. A value
+containing any of those broke the substitution while the tool reported having
+recorded it. Today's two callers pass a hex id and a date, but the helper is
+generic. The value is now escaped and the success line is gated on the write.
+
+`pack-verify` now writes to the pack, which is new for a tool named *verify* —
+it is confined to the full run (never `--lint`), only fills empty fields, and
+preserves both file mode `0600` and any inline comment.
+
 ## 2026-09-02 — platform-verify: TEAM_DOMAIN false FAIL, and a helper it called but nobody shipped (#33)
 
 - **The battery FAILed a correct platform.** The pack stores the Zero Trust team
