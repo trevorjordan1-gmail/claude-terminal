@@ -45,6 +45,8 @@ append the two lines to `/etc/asp-terminal.env` before arming it.
 | `BACKUP_ACCESS_KEY` / `BACKUP_SECRET_KEY` | credentials for that bucket |
 | `RESTIC_PASSWORD` | repo encryption password — **the one thing that cannot be regenerated** |
 | `BACKUP_KEEP` | optional `restic forget` flags; default `--keep-daily 7 --keep-weekly 4 --keep-monthly 6` |
+| `HEALTHCHECKS_API_KEY` | optional — lets `backup-arm.sh` mint one Healthchecks check per machine (`backup-<client>-<machine>`, upsert on the name) and wire its ping URL; see Monitoring |
+| `HEALTHCHECKS_API_URL` | optional, default `https://healthchecks.io` (self-hosted instances) |
 
 Credentials come from this parameter rather than the instance role on purpose:
 the same script has to work against a customer's Wasabi bucket, where no AWS
@@ -101,6 +103,39 @@ paused overnight runs its missed backup shortly after it wakes. Each run backs
 up `/home` (excluding caches, `node_modules`, virtualenvs and other regenerable
 trees), then prunes to the retention window.
 
+## Monitoring — the ping is part of the job
+
+`backup-run.sh` pings a Healthchecks URL: bare on success, `/fail` on every error path, and
+nothing at all when no URL is configured (the script works with no monitoring account).
+The check then alerts on **silence** (never ran) and on **failure** (ran, broke) — the two
+things a timer on a hibernating fleet can get wrong.
+
+Why it is baked in: a box migrated from the cron-era script to the timer kept backing up
+nightly while its check showed DOWN for 12 days — the cron script pinged, the timer script
+did not. A monitoring gap that *looks* like a backup failure invites exactly the wrong
+emergency response.
+
+`backup-arm.sh` resolves the URL in this order and writes it as `HEALTHCHECK_URL` into
+`/etc/asp-backup.env`:
+
+1. `HEALTHCHECK_URL` in its environment at arm time (`HEALTHCHECK_URL=… bash
+   /opt/asp/backup-arm.sh` over SSM), or `ASP_BACKUP_HC_URL` in `/etc/asp-terminal.env` —
+   use this to point a box at a check that already exists;
+2. `HEALTHCHECKS_API_KEY` in the tenant config → upsert `backup-<client>-<machine>`
+   (period 1 day, grace 12 h, tags `asp backup <client>`); re-arming is idempotent;
+3. the value the previous `/etc/asp-backup.env` carried — re-arming never drops it;
+4. none — the arm line says so out loud.
+
+**Triage rule: a DOWN backup check is a claim about pings, not about snapshots.** Before
+anything else, `restic snapshots --compact | tail -3` on the box (or the droplet helper
+`restic-snapshots-age.sh`) — that is the ground truth. Fresh snapshots + DOWN check =
+monitoring gap (re-arm with a URL); stale snapshots = a backup problem
+(`journalctl -u asp-backup.service`).
+
+**Boxes armed before this landed** have no `HEALTHCHECK_URL` line. Re-run `backup-arm.sh`
+over SSM: with `HEALTHCHECKS_API_KEY` in the config it mints the check; to keep an existing
+check, pass its ping URL as `HEALTHCHECK_URL=…`.
+
 ## Restore
 
 Restic repos are self-describing; any machine with the repo URL, the key and
@@ -123,3 +158,5 @@ On the box itself the environment is already there: `set -a; . /etc/asp-backup.e
 - `/var/log/asp-backup-arm.log` — what happened at build.
 - A repo that has never had a successful run has no `snapshots` output. Treat
   "armed" and "has a snapshot" as different claims; verify the second one.
+- A DOWN Healthchecks check is a third, separate claim (see Monitoring) — `restic
+  snapshots` settles whether it is the backup or the ping that failed.
