@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-09-03 — the launcher is no longer DCV-only; a terminal-prefs hint that could never work
+
+Both from one operator report: a fresh non-DCV box got no `cc` launcher, and the
+manual command the skip line offered did nothing.
+
+- **`cc-launcher` and `cc-statusline` now install on every box.** They were
+  gated behind `is_dcv_terminal`, which was right when the launcher was a DCV
+  workspace menu (#3) and wrong since #26 made it a session-recall TUI with
+  context-fill warnings and the hand-off loop. None of that is DCV-specific — it
+  reads `~/Projects` and `~/.claude/projects` and nothing else — and a Hyper-V
+  box with three terminals open needs it just as much. The launcher's SETUP
+  entry stays gated on the pack env file internally, so a box without one never
+  sees that item.
+- **`42-terminal-prefs`' skip line pointed at a command that cannot work.** It
+  suggested `dconf load /org/gnome/terminal/legacy/ < assets/gnome-terminal.dconf`,
+  but the asset's profile stanza is keyed to `b1dcc9dd-…`, GNOME Terminal's
+  well-known default profile uuid **on a pristine install**. The skip only fires
+  on a box whose terminal is already customized — which is exactly when the
+  default profile has a different uuid, so the load writes a profile nothing
+  uses and appears to do nothing at all. The advice was guaranteed to fail in
+  the only situation it was ever shown in.
+  `tools/seed-terminal-prefs.sh` replaces it: it reads the live default profile
+  from `org.gnome.Terminal.ProfilesList` and writes there, splits the asset's
+  keybindings and profile stanzas to their proper paths, and goes through
+  `gui_conf` because a busless `dconf load` writes nothing while exiting 0 —
+  the same trap as `gsettings` in 43b6e27.
+
 ## 2026-09-03 — Switcher window picker on Alt+` (#37)
 
 A Claude Code terminal is many `gnome-terminal` windows told apart by their
