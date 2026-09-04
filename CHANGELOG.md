@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-03 — switcher verify FAILed every freshly-provisioned box
+
+`verify.sh` asked `gnome-extensions info` for the **runtime State** and required
+`ENABLED`. An extension that is enabled but which the shell has not loaded yet
+reports `INITIALIZED` — and that is exactly the state `46-switcher` leaves
+behind, because it tells you to reload the shell rather than restarting GNOME
+under a live desktop. So the check FAILed on every box between provisioning and
+the next shell reload, which is every box on the day it is built.
+
+Now it asks the **enabled list** (`gnome-extensions list --enabled`), which is
+the durable fact, and reports a counted SKIP — "enabled but not loaded yet" —
+when the shell has yet to pick it up. A genuine FAIL is now only a genuinely
+disabled extension.
+
+Also wrapped `gnome-extensions enable` in `gui_conf`, matching every other
+settings write in that module: it goes through gsettings, and with no user bus
+that exits 0 while writing nothing (43b6e27).
+
 ## 2026-09-03 — the launcher is no longer DCV-only; a terminal-prefs hint that could never work
 
 Both from one operator report: a fresh non-DCV box got no `cc` launcher, and the

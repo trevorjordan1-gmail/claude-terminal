@@ -121,8 +121,16 @@ fi
 # not a signal. SKIP wherever it was never installed.
 SW="$HOME/.local/share/gnome-shell/extensions/switcher@landau.fi"
 if [ -d "$SW" ]; then
-    if gnome-extensions info switcher@landau.fi 2>/dev/null | grep -qi 'state.*ENABLED'; then
-        p "switcher extension enabled"
+    # Ask the ENABLED LIST, not the runtime State. An extension that is enabled but which
+    # the shell has not loaded yet reports INITIALIZED, and that is precisely the state
+    # 46-switcher leaves behind -- it tells you to reload the shell rather than doing it to
+    # a live desktop. Checking State therefore FAILed every freshly-provisioned box.
+    if gnome-extensions list --enabled 2>/dev/null | grep -qx 'switcher@landau.fi'; then
+        if gnome-extensions info switcher@landau.fi 2>/dev/null | grep -qiE 'state: *ENABLED'; then
+            p "switcher extension enabled"
+        else
+            s "switcher enabled but not loaded yet — reload the shell or log out/in"
+        fi
     else
         f "switcher installed but not enabled — gnome-extensions enable switcher@landau.fi"
     fi

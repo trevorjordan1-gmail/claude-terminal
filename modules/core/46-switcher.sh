@@ -29,7 +29,9 @@ if [ ! -d "$EXT" ]; then
     gnome-extensions install --force "$CT_TMP/switcher.zip" >/dev/null 2>&1 \
         || fail "gnome-extensions install failed"
 fi
-gnome-extensions enable "$UUID" >/dev/null 2>&1 || true
+# gui_conf like every other settings write here: `gnome-extensions enable` goes through
+# gsettings, and with no user bus that exits 0 while writing nothing (43b6e27).
+gui_conf gnome-extensions enable "$UUID" >/dev/null 2>&1 || true
 
 # The three local patches ship with the kit and are re-applied whenever the extension's
 # files change, because an extension update overwrites them.
