@@ -7,12 +7,19 @@ if ! have claude; then
     have claude || fail "claude not on PATH after install — open a new shell and re-run"
 fi
 
-# DCV terminals are menu-first (issue #3): `cc` opens the workspace picker
-# (templates/cc-launcher.sh) so every session starts in the right folder with
-# the right CLAUDE.md. Same file + alias shape SETUP.md step 3 uses, so a
-# SETUP run and this module converge instead of fighting. Hyper-V keeps the
-# plain alias.
-if is_dcv_terminal; then
+# `cc` opens the workspace picker (templates/cc-launcher.sh) so every session
+# starts in the right folder with the right CLAUDE.md. Same file + alias shape
+# SETUP.md step 3 uses, so a SETUP run and this module converge instead of
+# fighting.
+#
+# This was DCV-only when the launcher was just a menu (issue #3). Since #26 it
+# is a session-recall TUI with context-fill warnings and the hand-off loop,
+# none of which is DCV-specific -- it reads ~/Projects and ~/.claude/projects
+# and nothing else. A Hyper-V box with three terminals open needs it just as
+# much. The launcher's SETUP entry stays gated on the pack env file inside the
+# launcher, so a box without one simply never sees that item.
+# (Body left indented: it is fine in bash, and re-indenting would disturb the
+# python heredoc below, where indentation is load-bearing.)
     mkdir -p "$HOME/.local/bin"
     if ! cmp -s "$SCRIPT_DIR/templates/cc-launcher.sh" "$HOME/.local/bin/cc-launcher"; then
         install -m 0755 "$SCRIPT_DIR/templates/cc-launcher.sh" "$HOME/.local/bin/cc-launcher" \
@@ -38,9 +45,6 @@ if "statusLine" not in cfg:  # never clobber a user's own statusline
     p.write_text(json.dumps(cfg, indent=2) + "\n")
 PY
     CC_CMD='cc-launcher'
-else
-    CC_CMD='claude --dangerously-skip-permissions'
-fi
 append_block "$HOME/.bashrc" "claude-terminal aliases" <<EOF
 # DCV/cloud sessions skip the login-shell pass through ~/.profile, so the
 # claude install dir must go on PATH here in .bashrc.

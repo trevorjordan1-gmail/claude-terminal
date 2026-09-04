@@ -11,7 +11,10 @@ ASSET="$SCRIPT_DIR/assets/gnome-terminal.dconf"
 # stock. Once you've customized (or we've seeded), later runs leave it alone.
 # (dconf dump reads the database file directly — no bus needed.)
 if [ -n "$(dconf dump /org/gnome/terminal/legacy/ 2>/dev/null)" ]; then
-    skip "terminal already customized — not overwriting (manual: dconf load /org/gnome/terminal/legacy/ < $ASSET)"
+    # NOT "dconf load … < $ASSET": the asset's profile stanza is keyed to GNOME's
+    # well-known default uuid, so on a customized box it writes a profile nothing uses
+    # and looks like it did nothing. The helper targets your LIVE default profile.
+    skip "terminal already customized — not overwriting (to apply anyway: $SCRIPT_DIR/tools/seed-terminal-prefs.sh)"
 fi
 
 gui_conf dconf load /org/gnome/terminal/legacy/ < "$ASSET" || fail "dconf load failed"
