@@ -99,7 +99,10 @@ Access application per hostname (`status.<CLIENT_DOMAIN>` now; NEW-APP adds one 
   token (dry-run then `--apply` cost two Global-Admin sign-ins within minutes, field-hit).
   It builds the one-per-client registration with the REAL `TEAM_DOMAIN` callback (+ the
   aiops mail rider unless the pack says `MAIL_CAPABILITY=none`) and writes `ENTRA_*`
-  straight into the pack; the single human act is the engineer opening the printed
+  straight into the pack, then checks **Conditional Access MFA coverage** for the new app
+  ID (#41 — `MFA: ⚠ NOT covered` means single-factor sign-ins until the client fixes a
+  policy; record the fix chosen in STATE.md, do not onboard users before it). The single
+  human act is the engineer opening the printed
   sign-in link: **open it in a private window, sign in, close the window** (any device,
   this desktop included — ENTRA-SSO.md states the rule once and is the place to change it).
   Then wire the Entra login method into Zero Trust (API) and the policies allow the

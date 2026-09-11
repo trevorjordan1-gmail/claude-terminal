@@ -95,6 +95,9 @@ def fake_urlopen(req,*a,**k):
         if "missing@" in q: raise urllib.error.HTTPError(url,404,"Not Found",{},io.BytesIO(b'{"error":"nf"}'))
         return ok({"id":"aiops-oid"})
     if q.endswith("/owners?$select=id"): return ok({"value":[]})
+    if q.startswith("identity/conditionalAccess/policies"):
+        if STATE.get("ca") is None: raise urllib.error.HTTPError(url,403,"Forbidden",{},io.BytesIO(b'{"error":"denied"}'))
+        return ok({"value":STATE["ca"]})
     if q.startswith("organization?$select=id"):
         return ok({"value":[{"id":"tenant-guid","verifiedDomains":[
             {"name":"acme-example.com","isInitial":False},
@@ -244,5 +247,56 @@ fresh()
 c,out=run(["--pack",pk])
 assert "ENTRA_ADMIN_DOMAIN" not in m.read_pack(pk), "dry-run wrote the admin domain"
 print("PASS ENTRA_ADMIN_DOMAIN — initial onmicrosoft.com read from Graph on --apply, not on dry-run")
+
+# ---------- #41: Conditional Access MFA coverage, checked while the GA token is in hand ----------
+O365="00000002-0000-0ff1-ce00-000000000000"
+def pol(name, apps, state="enabled", mfa=True, strength=False, excl=()):
+    g={"builtInControls":["mfa"] if mfa else [], "authenticationStrength":({"id":"s1"} if strength else None)}
+    return {"displayName":name,"state":state,"grantControls":g,
+            "conditions":{"applications":{"includeApplications":list(apps),"excludeApplications":list(excl)},
+                          "users":{"includeUsers":["All"]}}}
+
+fresh(); STATE["ca"]=[pol("Require MFA - Office 365",[O365])]
+c,out=run(["--pack",pk,"--apply"])
+assert c==0, (c,out)
+assert "MFA" in out and "NOT covered" in out and "single-factor" in out, out
+assert "targeted" in out and "All cloud apps" in out and "report-only" in out, out   # both fix shapes named
+assert m.read_pack(pk)["ENTRA_CLIENT_ID"]=="client-guid", "registration lost on an MFA warn (must be a WARN, not a gate)"
+print("PASS #41 — O365-only MFA policy → loud WARN naming both fix shapes; registration still completes")
+
+fresh(); STATE["ca"]=[pol("Require MFA - all apps",["All"])]
+c,out=run(["--pack",pk,"--apply"])
+assert "MFA: covered" in out and "Require MFA - all apps" in out and "NOT covered" not in out, out
+print("PASS #41 — an enabled All-cloud-apps MFA policy → covered, policy named")
+
+fresh(); STATE["ca"]=[pol("Platform apps MFA",["client-guid"],mfa=False,strength=True)]
+c,out=run(["--pack",pk,"--apply"])
+assert "MFA: covered" in out and "Platform apps MFA" in out, out
+print("PASS #41 — a policy targeting the new appId via authentication strength → covered")
+
+fresh(); STATE["ca"]=[pol("Require MFA - all apps",["All"],state="enabledForReportingButNotEnforced")]
+c,out=run(["--pack",pk,"--apply"])
+assert "NOT covered" in out and "report-only" in out and "Require MFA - all apps" in out, out
+print("PASS #41 — report-only policy does not count, and is named as the near miss")
+
+fresh(); STATE["ca"]=[pol("Require MFA - all apps",["All"],excl=["client-guid"])]
+c,out=run(["--pack",pk,"--apply"])
+assert "NOT covered" in out, out
+print("PASS #41 — All-apps policy that EXCLUDES the new appId → not covered")
+
+fresh(); STATE["ca"]=None
+c,out=run(["--pack",pk,"--apply"])
+assert c==0 and "could not read Conditional Access" in out and "6.3" in out, (c,out)
+print("PASS #41 — token cannot read policies → says so and points at the by-hand check, never fails the mint")
+
+fresh(); STATE["ca"]=[pol("Require MFA - Office 365",[O365]), pol("Portal MFA",["portal-guid"])]
+c,out=run(["--pack",pk,"--apply","--mfa-app","portal-guid"])
+assert "NOT covered" in out and "client-guid" in out and "portal-guid" in out and "covered" in out, out
+print("PASS #41 — --mfa-app adds the portal appId to the same check; each app reported separately")
+
+fresh(); STATE["ca"]=[pol("Require MFA - Office 365",[O365])]
+c,out=run(["--pack",pk])
+assert "NOT covered" in out and "DRY-RUN" in out, out
+print("PASS #41 — dry-run still runs the (read-only) coverage check")
 
 print("\nALL TESTS PASSED")
