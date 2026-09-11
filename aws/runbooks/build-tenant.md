@@ -1,5 +1,9 @@
 # Build a Claude Code Terminals tenant — agent runbook
 
+> **Fresh AWS account?** Do [`account-foundations.md`](account-foundations.md) first —
+> root lockdown, the IAM build user (never root keys), quotas, Cost Explorer, the
+> `az`-free Entra path and the Conditional Access MFA check. This runbook assumes all of it.
+
 **Audience:** a Claude Code agent (or human) standing up a complete tenant from
 zero. Every command is copy-pasteable; placeholders are in `<angle-brackets>`.
 **This is a living document** — refine it after every build/test session.
@@ -18,7 +22,7 @@ management surface. Admin access is **SSM only** — no SSH anywhere.
 | Input | Example | Notes |
 |---|---|---|
 | `customer` slug | `acme-poc` | tag + IAM scoping |
-| AWS account | client-owned | admin creds/role required |
+| AWS account | client-owned | an **IAM user** with AdministratorAccess (`account-foundations.md` §2) — never the root user's keys |
 | `region` | `us-east-2` | closest to client |
 | Entra tenant | client's tenant | Global Admin or App Admin needed |
 | `dns_zone` | `terminals.example.com` | per client: `terminals.<client-domain>` or similar |
@@ -31,7 +35,8 @@ management surface. Admin access is **SSM only** — no SSH anywhere.
 
 ```bash
 aws sts get-caller-identity                  # admin in the target account
-az account show                              # right Entra tenant
+# Entra: no `az` on the build terminal — every directory step is a device-code Graph sitting
+# (templates/entra-sso/, account-foundations.md §5–§6); confirm the Global Admin + tenant with the engineer
 terraform version                            # >= 1.10 (install to ~/.local/bin if absent)
 # Cloudflare: zone-scoped DNS-edit token. VERIFY IT LISTS THE ZONE:
 . ~/.config/cloudflare/asp.env               # CF_API_TOKEN, CF_ZONE_ID
@@ -65,6 +70,12 @@ Tenant values never live in the repo: they go in a git-ignored `terraform/backen
 
 ## 3. Entra objects
 
+> Written for `az`; the build terminal has none. Supported path: the device-code Graph
+> provisioner (#39 — until it lands, the Entra portal by hand with these exact settings).
+> This is the **`<code>-terminals`** registration — separate from `<code>-sso` on purpose
+> (`account-foundations.md` §6.2). After it exists, run the Conditional Access MFA check
+> (§6.3 there) for its app ID.
+
 ```bash
 # 3 groups; record the object IDs
 az ad group create --display-name ASP-Desktop-Users --mail-nickname asp-desktop-users
@@ -74,7 +85,7 @@ az ad group member add --group <desktop-users-id> --member-id <user-object-id>  
 az ad group member add --group <admins-id> --member-id <admin-user-object-id>
 
 # app registration (web, auth-code flow)
-APPID=$(az ad app create --display-name "AI Terminals" --sign-in-audience AzureADMyOrg \
+APPID=$(az ad app create --display-name "<code>-terminals" --sign-in-audience AzureADMyOrg \
   --web-redirect-uris "https://portal.<dns_zone>/auth/callback" --query appId -o tsv)
 OBJID=$(az ad app show --id $APPID --query id -o tsv)
 az rest --method PATCH --url "https://graph.microsoft.com/v1.0/applications/$OBJID" \

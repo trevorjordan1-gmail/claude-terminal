@@ -2,7 +2,11 @@
 
 **Audience: Claude Code on the terminal, + the engineer for one sign-in.** Auth model:
 Guide §15 (Pattern A default — Access + Entra; Pattern B extends this same registration).
-ONE registration per client, ever.
+ONE registration per **trust boundary**: `<code>-sso` is the only delegated-login registration
+the client ever gets — every app on the client domain extends it. The single exception is the
+DCV terminals portal (`<code>-terminals`, `aws/runbooks/account-foundations.md` §6.2): it needs
+*application* directory-read roles and runs in the client's AWS account, so it gets its own
+object rather than handing tenant-wide directory read to every holder of this one's secrets.
 
 ## Step 1 — create the registration (who runs what)
 
@@ -124,6 +128,6 @@ The same registration carries the terminal's ability to **send and read mail as
 
 ## Later — a Pattern-B app is born (NEW-APP decides)
 
-Never a new registration: add the app's redirect URI + mint a secret labeled `<app>` on
+Never a new registration for a delegated-login app: add the app's redirect URI + mint a secret labeled `<app>` on
 the SAME `<code>-sso` object — via Graph (aiops owner / OwnedBy credentials; verify the
 headless path on first use) or a dictated 60-second change by whoever holds the tenant.
