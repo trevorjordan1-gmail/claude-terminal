@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-11 — AWS account foundations runbook (#38, #39, #40, #41 doc side)
+
+`aws/runbooks/build-tenant.md` began at "admin creds required" and assumed the
+`az` CLI. The first tenant built from a fresh account by an engagement terminal
+hit everything that assumption hid: the pack arrived with the **root user's access
+keys** and the build used them; Cost Explorer was never enabled so budgets fell
+back to the model; there was no `az`, so Entra objects were improvised; the only
+Conditional Access MFA policy covered Office 365 and the platform logins ran
+**single-factor for 11 days**; and the control plane's first boot half-failed on
+ordering nobody had written down.
+
+New `aws/runbooks/account-foundations.md` is everything before `build-tenant.md`
+§1: root lockdown, an IAM build user (with the safe order for replacing root keys),
+quota requests sized to the fleet, the one-click Cost Explorer enable, the tooling
+on the build terminal, the Entra prerequisites, and the first-boot re-run order,
+ending in a checklist. It also states the registration model the field arrived at
+by instinct: **one registration per trust boundary** — `<code>-sso` for every
+delegated-login app on the client domain, `<code>-terminals` for the DCV portal,
+which needs application-level directory read and whose secret lives only in SSM.
+`ENTRA-SSO.md`'s "never a new registration" rule is scoped to delegated-login apps
+to match; the tenant runbook's §3 names the portal registration accordingly.
+
 ## 2026-09-03 — switcher verify FAILed every freshly-provisioned box
 
 `verify.sh` asked `gnome-extensions info` for the **runtime State** and required

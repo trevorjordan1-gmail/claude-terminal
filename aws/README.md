@@ -20,14 +20,15 @@ user ── Entra login ──> portal ──> Session Manager Broker ──> to
 | `terraform/` | Tenant substrate: VPC, control plane + EIP, desktop launch template, SG-to-SG rules, IAM. **No desktop instances** — users are provisioned from the portal admin page. |
 | `portal/` | FastAPI portal: Entra OIDC login, machine list with real states, power controls, Connect (broker token + `dcv://` handoff), session share/join/revoke, admin add/remove user, idle & cost settings, `/downloads`. |
 | `scripts/` | Idempotent provisioning + operations: desktop GNOME/DCV setup, control-plane broker/gateway/TLS, idle watchdog (auto-pause), WU-style self-update, fleet rollout. |
-| `runbooks/build-tenant.md` | **Start here** — builds a complete tenant from zero, with every hard-won gotcha. |
+| `runbooks/account-foundations.md` | **Fresh AWS account? Start here** — root lockdown, IAM build user (never root keys), quotas, Cost Explorer, `az`-free Entra path, Conditional Access MFA coverage, first-boot ordering. Ends where `build-tenant.md` begins. |
+| `runbooks/build-tenant.md` | Builds a complete tenant from a prepared account, with every hard-won gotcha. |
 | `runbooks/build-boxes.md` | Operator-only: per-engagement workbenches (group-owned desktops). Dormant on customer tenants — activates only where `GROUP_BUILD_ENGINEERS` is configured. |
 | `runbooks/build-tenant.md` §11.6 | **Medical profile** (`profile = "medical"`): Bedrock-only terminals, DCV file-download deny, zero-data-retention lock (`scripts/bedrock-zdr.sh`), offboarding wipe list. |
 | `tenants.example.json` | Template for the git-ignored `tenants.json` fleet registry. |
 
 ## Quick start
 
-1. Read [`runbooks/build-tenant.md`](runbooks/build-tenant.md) end to end.
+1. New account: [`runbooks/account-foundations.md`](runbooks/account-foundations.md), then read [`runbooks/build-tenant.md`](runbooks/build-tenant.md) end to end.
 2. Tenant identity lives ONLY in git-ignored files: `terraform/backend.hcl`,
    `terraform/terraform.tfvars`, and `tenants.json` (copy the example).
 3. Iterate with the scripts→S3→SSM pattern (runbook §9); never hand-edit a
