@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-11 — provision-sso.py checks Conditional Access MFA coverage (#41)
+
+Registering `<code>-sso` makes Entra the login for every platform surface, but
+Conditional Access is **per-app**. The common MSP shape is one "Require MFA" policy
+scoped to Office 365 — under it, Cloudflare Access and portal sign-ins through the
+new registration are single-factor and nothing says so. A tenant ran that way for
+11 days until an engineer noticed the missing prompt.
+
+The provisioner now ends every run (dry-run included) by reading the tenant's
+policies with the token it already holds and reporting, per app ID, whether an
+**enabled** policy with an MFA grant or authentication strength includes it and
+does not exclude it. Report-only policies are named as the near miss, not counted.
+`NOT covered` prints both fix shapes — a targeted policy for the platform app IDs,
+or widening the existing one to All cloud apps in report-only mode first — and
+says not to onboard users until one is in place. It is a warning, never a gate:
+the fix is a policy change the client makes, and the registration is still the
+valuable part. `--mfa-app <appId>` (repeatable) adds the DCV portal's registration
+to the same check. A token that cannot read policies says so and points at the
+by-hand check rather than failing the mint. Self-test 16 → 24.
 ## 2026-09-11 — AWS account foundations runbook (#38, #39, #40, #41 doc side)
 
 `aws/runbooks/build-tenant.md` began at "admin creds required" and assumed the

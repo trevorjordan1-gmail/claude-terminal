@@ -40,6 +40,14 @@ service-token probe ever exercises this redirect.
   dry-run / `--apply` still work for the two-step habit. The pack's `MAIL_CAPABILITY=none`
   skips the aiops mail rider + owner (SETUP recorded that skip; the registration must not
   contradict it) — `--aiops` overrides explicitly.
+  **The run ends with a Conditional Access MFA coverage check (#41).** Conditional Access is
+  per-app; a tenant whose only Require-MFA policy is scoped to Office 365 leaves every Access
+  and portal sign-in through this registration **single-factor**, and nothing else says so.
+  `MFA: covered — <appId> ← '<policy>'` is the pass; `MFA: ⚠ NOT covered` names the two fix
+  shapes (a targeted policy for the platform app IDs, or widen to All cloud apps — report-only
+  first). It is a warning, not a gate: record the client's choice in STATE.md and do not onboard
+  users until one is in place. Pass `--mfa-app <appId>` to check the DCV portal's registration
+  in the same sitting; by hand: `aws/runbooks/account-foundations.md` §6.3.
   Two optional extras, both OFF unless asked for (#24). `--exporter-mail` (or pack
   `EXPORTER_MAIL=true`) additionally **declares** the Graph *application* role `Mail.Read`
   so the appliance's one-click adminconsent has something to grant — no second Global-Admin

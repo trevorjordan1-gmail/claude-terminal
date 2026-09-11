@@ -26,6 +26,11 @@ What one --apply run ensures (same object model as New-ClientSSO.ps1):
     permissions — the two are a union — so this design has a migration ahead of it).
   * A secret labeled `cloudflare-access` (12 months) IF none is live — printed once, and with
     --pack written straight into the pack (never transits another machine).
+  * LAST, a read-only CONDITIONAL ACCESS MFA COVERAGE check (#41) with the same token: Conditional
+    Access is per-app, and the usual MSP shape (one Require-MFA policy scoped to Office 365) leaves
+    every Access/portal sign-in through this registration single-factor with no symptom. Prints
+    covered/NOT covered per app ID (add the DCV portal's with --mfa-app) and both fix shapes. A
+    WARN, never a gate — the fix is the client's policy change; also runs on dry-run.
 
 Auth = the field-proven device-code relay (see get-graph-token-devicecode.sh: az-cli
 first-party client, `.default` scopes — explicit admin scopes trip AADSTS65002 — TENANT-PINNED
@@ -107,6 +112,9 @@ def parse_args():
     p.add_argument("--team", help="REAL Zero Trust team prefix (default: pack TEAM_DOMAIN). No safe default — see ENTRA-SSO.md")
     p.add_argument("--aiops", help="aiops UPN for the mail rider + owner (default: pack AIOPS_UPN; omit with --no-aiops)")
     p.add_argument("--no-aiops", action="store_true", help="skip the mail rider/owner (retrofit later with Grant-AiopsMail.ps1)")
+    p.add_argument("--mfa-app", action="append", default=[], metavar="APPID",
+                   help="additional appId(s) to include in the Conditional Access MFA coverage check (#41) — "
+                        "e.g. the DCV terminals portal registration; repeatable")
     p.add_argument("--defer-redirect", action="store_true", help="EXPLICIT opt-in to create with no redirect URI (Zero Trust not bootstrapped yet); re-run later with --team")
     p.add_argument("--exporter-mail", action="store_true",
                    help="also DECLARE the Graph application role Mail.Read (default: pack EXPORTER_MAIL). "
@@ -209,6 +217,47 @@ class Graph:
 
     def get(self, path, soft=False):
         return self.call("GET", path, soft=soft)
+
+
+def mfa_coverage(g, apps):
+    """#41 — Conditional Access is PER-APP. Registering <code>-sso makes Entra the login for every
+    platform surface, but the common MSP shape is one 'Require MFA' policy scoped to Office 365
+    only, under which Access + portal sign-ins are SINGLE-FACTOR and nothing says so (one tenant
+    ran that way for 11 days). Read-only, same delegated token; a WARN, never a gate — the fix is
+    a policy change the client makes, and the registration is still the valuable part."""
+    r = g.get("identity/conditionalAccess/policies?$select=displayName,state,conditions,grantControls", soft=True)
+    if r is None:
+        print("MFA: ⚠ could not read Conditional Access policies with this token (Policy.Read.All not granted?)\n"
+              "     — check coverage by hand: aws/runbooks/account-foundations.md §6.3")
+        return None
+    pols = r.get("value", [])
+
+    def mfa(p):
+        gc = p.get("grantControls") or {}
+        return "mfa" in (gc.get("builtInControls") or []) or bool(gc.get("authenticationStrength"))
+
+    def targets(p, app):
+        apps = (p.get("conditions") or {}).get("applications") or {}
+        inc, exc = apps.get("includeApplications") or [], apps.get("excludeApplications") or []
+        return ("All" in inc or app in inc) and app not in exc
+
+    result = {}
+    for app in apps:
+        live = [p["displayName"] for p in pols if p.get("state") == "enabled" and mfa(p) and targets(p, app)]
+        near = [p["displayName"] for p in pols if p.get("state") == "enabledForReportingButNotEnforced" and mfa(p) and targets(p, app)]
+        result[app] = bool(live)
+        if live:
+            print(f"MFA: covered — {app} ← '{live[0]}'" + (f" (+{len(live) - 1} more)" if len(live) > 1 else ""))
+        else:
+            print(f"MFA: ⚠ NOT covered — {app}: no ENABLED Conditional Access policy with an MFA grant includes it"
+                  + (f" (report-only only: '{near[0]}')" if near else ""))
+    if not all(result.values()):
+        print("     Every sign-in to Cloudflare Access / the portal through this registration is single-factor\n"
+              "     until the client fixes it. Two shapes, their choice — record which in STATE.md:\n"
+              "       1. a targeted policy: Require MFA for exactly these app IDs (smallest change)\n"
+              "       2. widen the existing policy to All cloud apps — report-only first, then enabled\n"
+              "     Do not onboard users on this tenant until one of them is in place.")
+    return result
 
 
 def resolve(a, pack):
@@ -393,6 +442,8 @@ def provision(g, a, pack, code, team, exporter, appliance, aiops_upn, tenant):
         print("\n======== VALUES (secret shows ONCE — pack .env + vault, never a ticket/note/email) ========")
         for k, v in out.items():
             print(f"  {k} = {v}")
+    # 5 — Conditional Access MFA coverage (#41): read-only, same token, WARN not gate
+    mfa_coverage(g, [client_id] + list(a.mfa_app))
     print("Next: ENTRA-SSO.md step 2 — wire the Entra IdP into Zero Trust, flip Access policies, prove a staff sign-in.")
 
 
