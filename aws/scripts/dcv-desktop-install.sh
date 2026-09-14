@@ -150,6 +150,12 @@ fi
 # Self-heal watchdog (#21): probes the framebuffer once gnome-shell is up and
 # restarts it in place if it never painted. Backgrounded — never blocks login.
 [ -x /opt/asp/session-paint-probe.sh ] && /opt/asp/session-paint-probe.sh >/dev/null 2>&1 &
+# Layout guard (field report 2026-09-11): mutter enables all four
+# "connected" Xdcv outputs ~2 s after start and undoes the pre-mode above (and
+# the portal's Connect-time layout) → 4x800x600, then a 3200x600 head at 0 Hz
+# and the #20 stall. This keeps re-asserting the single 1920x1080 head for the
+# first minute, after gnome-shell is up. Backgrounded — never blocks login.
+[ -x /opt/asp/session-layout-guard.sh ] && /opt/asp/session-layout-guard.sh >/dev/null 2>&1 &
 exec /etc/X11/Xsession
 INIT
 chmod 755 /etc/dcv/dcvsessioninit
@@ -159,6 +165,11 @@ if aws s3 cp "s3://$ASP_BUCKET/scripts/session-paint-probe.sh" /opt/asp/session-
   chmod 755 /opt/asp/session-paint-probe.sh
 else
   echo "WARN: session-paint-probe.sh not in bucket — paint watchdog skipped" >&2
+fi
+if aws s3 cp "s3://$ASP_BUCKET/scripts/session-layout-guard.sh" /opt/asp/session-layout-guard.sh; then
+  chmod 755 /opt/asp/session-layout-guard.sh
+else
+  echo "WARN: session-layout-guard.sh not in bucket — layout guard skipped" >&2
 fi
 # remove the dead-end init attempts (nothing ever executed these)
 rm -f /var/lib/dcv-session-manager-agent/init/default.sh \
