@@ -172,6 +172,18 @@ product lives upstream on `main`. The loop (issue #1):
    *If you have already shipped something urgent directly, say so in the issue
    and link the merge sha, so it gets reviewed after the fact rather than not
    at all.*
+   **The tracker is the only backlog.** Every open item — a fix, a rollout
+   the operator owes, a decision the operator has to make, a field check on a
+   free box — is its own open issue, or it does not exist: an agent starting
+   a session reads `gh issue list` and nothing else. One issue per item, so
+   each can close on its own; a sub-item may ride inside a bigger issue only
+   while that issue is open (the relay-flow wording rode inside two issues
+   that closed and was lost twice — #46 is its own issue for that reason).
+   Owner by label: `operator` means the next move is the operator's; every
+   other open issue is an agent's queue. Start the body with one line on why
+   it matters, so the next agent picks by consequence, not by date. Local
+   notes and memory files are a cache that points at issue numbers, never a
+   place an item lives.
 4. **Tag every shipping merge**: `vYYYY.MM.DD` (`-1`, `-2` for more than one
    a day). `rollout.sh` stamps tenants with `git describe`, so tags are what
    make per-tenant version records meaningful. Roll tenants forward
