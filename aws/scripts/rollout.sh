@@ -1,10 +1,13 @@
 #!/bin/bash
 # Roll a change out to EVERY tenant (or --tenant NAME for one).
-# Usage: rollout.sh portal|scripts|workbench|all [--tenant NAME]
+# Usage: rollout.sh portal|scripts|workbench|all|verify [--tenant NAME]
 # The tenants.json registry IS the "did we get everywhere" checklist.
+# `verify` is a READ, not a layer of `all`: it runs cp-verify.sh on every control plane over
+# SSM and prints each box's report (#27) — run it after a rollout, or any time.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
-LAYER="${1:?usage: rollout.sh portal|scripts|workbench|all [--tenant NAME]}"
+LAYER="${1:?usage: rollout.sh portal|scripts|workbench|all|verify [--tenant NAME]}"
+case "$LAYER" in portal|scripts|workbench|all|verify) ;; *) echo "usage: rollout.sh portal|scripts|workbench|all|verify [--tenant NAME]" >&2; exit 2 ;; esac
 ONLY="${3:-}"; [ "${2:-}" = "--tenant" ] && ONLY="$3"
 VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo unknown)
 # tenant registry is PRIVATE — keep it out of this public repo
@@ -12,6 +15,24 @@ VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo unknown)
 TENANTS_FILE="${ASP_TENANTS:-tenants.json}"
 echo "== rollout $LAYER @ $VERSION =="
 FAIL=0
+# ssm_run INSTANCE TIMEOUT_S COMMAND — run one shell command on a box and wait for the
+# invocation to finish (up to TIMEOUT_S) instead of a fixed sleep. Prints stdout; the
+# final status lands in SSM_STATUS.
+SSM_STATUS=""
+ssm_run() {
+  local id=$1 tmo=$2 cmd=$3 c st
+  c=$(aws ssm send-command --instance-ids "$id" --document-name AWS-RunShellScript \
+    --timeout-seconds "$tmo" --parameters "commands=[\"$cmd\"]" \
+    --query Command.CommandId --output text) || return 1
+  st=""
+  for _ in $(seq 1 $((tmo / 5 + 1))); do
+    sleep 5
+    st=$(aws ssm get-command-invocation --command-id "$c" --instance-id "$id" --query Status --output text 2>/dev/null)
+    case "$st" in Success|Failed|TimedOut|Cancelled) break ;; esac
+  done
+  SSM_STATUS=${st:-unknown}
+  aws ssm get-command-invocation --command-id "$c" --instance-id "$id" --query StandardOutputContent --output text 2>/dev/null
+}
 # shellcheck disable=SC2034  # PORTAL is a registry column we read for shape, not (yet) used here
 while IFS=$'\t' read -r NAME PROFILE REGION BUCKET CPID PORTAL; do
   [ -n "$ONLY" ] && [ "$NAME" != "$ONLY" ] && continue
@@ -30,21 +51,10 @@ while IFS=$'\t' read -r NAME PROFILE REGION BUCKET CPID PORTAL; do
     (cd "$STAGE/portal" && zip -qr /tmp/portal-rollout.zip . -x "*/__pycache__/*" -x "__pycache__/*")
     rm -rf "$STAGE"
     aws s3 cp /tmp/portal-rollout.zip "s3://$BUCKET/portal/portal.zip" >/dev/null || ok=0
-    CMD=$(aws ssm send-command --instance-ids "$CPID" --document-name AWS-RunShellScript \
-      --timeout-seconds 300 --parameters 'commands=["bash /opt/asp/portal-deploy.sh >/dev/null 2>&1; sleep 3; curl -s http://127.0.0.1:8080/healthz"]' \
-      --query Command.CommandId --output text) || ok=0
     # portal-deploy pip-installs, so wait for the invocation to finish (up to
     # ~3 min) instead of a fixed sleep that reports a phantom VERSION MISMATCH
-    OUT=""
-    for _ in $(seq 1 36); do
-      sleep 5
-      ST=$(aws ssm get-command-invocation --command-id "$CMD" --instance-id "$CPID" \
-        --query Status --output text 2>/dev/null)
-      case "$ST" in Success|Failed|TimedOut|Cancelled) break ;; esac
-    done
-    OUT=$(aws ssm get-command-invocation --command-id "$CMD" --instance-id "$CPID" \
-      --query StandardOutputContent --output text 2>/dev/null)
-    echo "   portal healthz: $OUT (invocation: ${ST:-unknown})"
+    OUT=$(ssm_run "$CPID" 300 "bash /opt/asp/portal-deploy.sh >/dev/null 2>&1; sleep 3; curl -s http://127.0.0.1:8080/healthz") || ok=0
+    echo "   portal healthz: $OUT (invocation: $SSM_STATUS)"
     echo "$OUT" | grep -q "\"version\":\"$VERSION\"" || { echo "   VERSION MISMATCH"; ok=0; }
   fi
   if [ "$LAYER" = "workbench" ] || [ "$LAYER" = "all" ]; then
@@ -74,6 +84,18 @@ if float(d.get("pct", 0)) < 100 and time.time() - float(d.get("ts", 0)) < 7200:
         --query Command.CommandId --output text >/dev/null && echo "   workbench rerun queued: $I ($U)" || ok=0
     done
     [ -z "$IDS" ] && echo "   no running desktops (paused ones update on next natural wake via SSM rerun, or start them first)"
+  fi
+  if [ "$LAYER" = "verify" ]; then
+    # stage the current checker, then run it where it lives (certbot --dry-run can take a
+    # minute or two per box)
+    aws s3 cp scripts/cp-verify.sh "s3://$BUCKET/scripts/cp-verify.sh" >/dev/null || ok=0
+    REPORT=$(ssm_run "$CPID" 600 "aws s3 cp s3://$BUCKET/scripts/cp-verify.sh /opt/asp/cp-verify.sh >/dev/null && chmod 755 /opt/asp/cp-verify.sh && bash /opt/asp/cp-verify.sh 2>&1") || ok=0
+    if [ -n "$REPORT" ]; then
+      printf '%s\n' "$REPORT" | sed 's/^/   /'
+      printf '%s\n' "$REPORT" | grep -q '^- FAIL' && ok=0
+    else
+      echo "   no report from $CPID (invocation: $SSM_STATUS)"; ok=0
+    fi
   fi
   if [ "$ok" = 1 ]; then echo "   OK"; else echo "   FAILED"; FAIL=1; fi
 done < <(python3 -c "

@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-09-14 — `rollout.sh verify`: the control-plane field checks become one command (#27)
+
+#27's remaining items were "run these on the control plane and paste the
+output" — the cp-tls steady state, `certbot renew --dry-run` (which doubles
+as the Cloudflare token allowlist test, since the DNS-01 challenge runs from
+the CP with that token), the egress IP, the expiry alarm, and two desktop
+questions. Operator ask: automate anything that can be.
+
+New `aws/scripts/cp-verify.sh` — a read-only report on the CP: mirrors
+cp-tls.sh's lineage/live/SAN ladder without running it (steady state = "a
+re-run makes no certbot call"), runs the renewal dry-run and names the
+allowlist on failure with certbot's last line, prints the egress IP, runs the
+expiry checker and checks its timer, reads the portal's /healthz release, and
+flags any unquoted `/etc/asp-portal.env` value (#38). Paste-ready PASS/FAIL/
+SKIP lines and a verdict; exit 1 on any FAIL.
+`rollout.sh verify` stages it to every tenant bucket and runs it over SSM
+(600 s — the dry-run takes a minute), prints each box's report, and fails the
+tenant on any FAIL line. It is a read, not part of `all`. The SSM wait loop is
+now one function (`ssm_run`) shared with the portal layer.
+`verify.sh` on DCV boxes gained #27's two desktop questions as permanent
+checks: Chrome warm-start resident (SKIP with the reason when not, a SKIP
+without a desktop session) and a default terminal recorded in
+`xdg-terminals.list` (any entry silences the GNOME 46 prompt — the append
+branch is correct, answering item 4).
+
+Harnesses: `aws/tests/cp-verify-harness.sh` (container: real openssl and a
+real self-signed wildcard cert, the real cert-expiry-check.sh, stubbed
+certbot/curl/systemctl — healthy, no lineage, dry-run failure, timer +
+quoting), `aws/tests/rollout-verify-harness.sh` (stubbed aws CLI + fake
+registry), `tests/verify-dcv-harness.sh` (container, stubbed pgrep).
+
 ## 2026-09-14 — relay-flow venue decided: a private window on the build box is the normal path (#46)
 
 Two templates gave two answers on where a client Global Admin performs the

@@ -134,6 +134,10 @@ why in the module header.
    pgrep, captured logger — ~25 s, no X): `bash aws/tests/session-layout-guard-harness.sh`.
    `pack-verify.sh`'s AWS probe has one too (stubbed providers, a local fake
    STS): `bash templates/test-pack-verify.sh`.
+   Container harnesses (docker, image built on first run): the control-plane
+   self-check `bash aws/tests/cp-verify-harness.sh`, its rollout layer
+   `bash aws/tests/rollout-verify-harness.sh`, and verify.sh's DCV checks
+   `bash tests/verify-dcv-harness.sh`.
 6. Smoke: `./bootstrap.sh --list` and `--help`.
 7. Commit, push. Machines pick it up with
    `git -C ~/claude-terminal pull && ~/claude-terminal/bootstrap.sh`.
