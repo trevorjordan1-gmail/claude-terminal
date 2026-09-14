@@ -203,6 +203,14 @@ curl -s https://checkip.amazonaws.com                 # [== terraform output egr
 ```
 Then disable sshd fleet-wide: `systemctl disable --now ssh && systemctl mask ssh` (via SSM).
 
+**The control plane, any time after (#27):** `aws/scripts/rollout.sh verify` from the
+operator box runs `cp-verify.sh` on every registered control plane over SSM and prints
+its report — cp-tls steady state (a re-run would make no certbot call), `certbot renew
+--dry-run` (a real DNS-01 from the CP, so it IS the Cloudflare token allowlist test), the
+egress IP that allowlist must contain, the expiry alarm + its timer, the portal release,
+and `/etc/asp-portal.env` quoting. Any FAIL line fails the tenant. By hand on a CP:
+`sudo bash /opt/asp/cp-verify.sh`.
+
 ## 9. Iteration workflow (how to change anything)
 
 Scripts are the source of truth, S3 is the transport, SSM is the executor:

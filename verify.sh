@@ -68,6 +68,22 @@ else
 fi
 
 if is_dcv_terminal; then
+    # #27 items 3+4 — two questions that needed a live desktop, made permanent checks.
+    if [ -n "${DISPLAY:-}" ]; then
+        if pgrep -u "$(id -u)" -f google-chrome >/dev/null 2>&1; then
+            p "Chrome warm start resident (--no-startup-window keeps the process alive)"
+        else
+            s "Chrome not resident — fine if you closed it; on a fresh untouched session it means --no-startup-window exits instead of staying warm (#27)"
+        fi
+    else
+        s "Chrome warm-start check needs a desktop session (no DISPLAY)"
+    fi
+    XTL="$HOME/.config/xdg-terminals.list"
+    if [ -s "$XTL" ]; then
+        p "xdg-terminals.list: default terminal recorded — $(head -n 1 "$XTL") (any entry silences the GNOME 46 prompt)"
+    else
+        f "xdg-terminals.list missing/empty — GNOME 46 will ask 'set as default terminal?' (40-gnome-qol seeds it)"
+    fi
     if [ -x "$HOME/.local/bin/cc-launcher" ] && grep -q "^alias cc='cc-launcher'" "$HOME/.bashrc" 2>/dev/null; then
         p "cc is menu-first (cc-launcher) on this DCV terminal"
     else
