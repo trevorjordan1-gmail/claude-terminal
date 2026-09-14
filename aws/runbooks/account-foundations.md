@@ -198,9 +198,24 @@ STATE.md. Do not proceed to user onboarding on a tenant that fails this check.
 ## 7. Cloudflare — token before the control plane boots (#38)
 
 1. The zone exists at Cloudflare and the client (or operator) holds it.
-2. Create a **zone-scoped DNS-edit token**. No client-IP filter — or, if policy demands one,
-   add the control plane's egress EIP *after* the apply and before the first `cp-tls.sh` re-run
-   (tenant runbook §1 explains the failure it causes otherwise).
+2. Create a **zone-scoped DNS-edit token**, then **pin it to a source IP** — Cloudflare tokens
+   support client IP filtering, and it is the one meaningful control available on a token that
+   otherwise works from anywhere. **Order matters:** the egress EIP does not exist until after
+   the apply, so mint the token unpinned, and add the filter *after* the apply and *before* the
+   first `cp-tls.sh` re-run (tenant runbook §1 explains the failure a premature filter causes).
+   Pin to the egress EIP of the tenant the token will actually be used from — the operator
+   tenant's for a build box, the customer tenant's for a builder's terminal.
+
+   Know what this does and does not buy. Every desktop in a tenant NATs out of **one** shared
+   EIP, so a filter does not separate one builder from another: a token pinned to that address
+   is equally usable from any terminal in that tenant. What it does buy is that a token lifted
+   *off* a box is useless anywhere else. Per-builder separation comes from per-terminal tokens
+   and per-machine revocation, not from the filter.
+
+   Apply the same reasoning where else it is available: the `restic-<code>` Wasabi sub-user's
+   bucket policy takes an `aws:SourceIp` condition, and it is worth setting precisely because
+   the Wasabi keys are shared across terminals by design. GitHub cannot be pinned at all —
+   fine-grained PATs carry no IP restriction and org allow lists are Enterprise Cloud only.
 3. Put it in SSM **before** the control plane exists: `/asp/cloudflare/token` (SecureString,
    tenant runbook §4). The control plane's boot script fetches it; if the parameter is
    missing at boot, `cp-tls.sh` fails fast and tells you to create it — re-run it via SSM once
