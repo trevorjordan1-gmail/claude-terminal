@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-09-13 — cp-tls.sh cached an empty Cloudflare token; portal env values quoted (#38)
+
+The control plane runs `cp-setup.sh` at first boot, before `/asp/cloudflare/token`
+can exist on a fresh tenant (runbook §4 comes after the apply). `cp-tls.sh` guarded
+the fetch with "is there a credentials file", so the first run wrote a file with an
+EMPTY token and every later run skipped the fetch and failed inside certbot with
+"Either dns_cloudflare_api_token ... are required" — two layers from the cause.
+Now a cached file only counts if it actually carries a token; a missing or empty
+parameter is FATAL by name, with the fix, and nothing is cached. A control plane
+already poisoned self-heals on the next re-run. The fetch runs with xtrace off so
+the token stops echoing into the SSM command log. Verified in a container against
+a stubbed `aws`: missing / `None` / empty / good / poisoned-cache / cached-real.
+
+Same script, same run: `cp-tls.sh` re-installed `cert-expiry-check.sh` from its
+own directory onto itself (`/opt/asp` → `/opt/asp`), `install` refused, and it
+printed "not alongside this script" although the checker was in place and the
+timer was running. Now: same file → already installed; else the tenant bucket
+(where every other script comes from); else alongside; else a warning that says
+what to do.
+
+And #12's portal-side twin: `portal-deploy.sh` wrote `ASP_BRAND=Acme Terminals`
+bare into `/etc/asp-portal.env`. `config.py` coped, anything that sourced the
+file did not. Every value is now single-quoted with the same `'\''` splice the
+terminal env file uses, and `config.py` reads quoted and legacy-bare lines alike
+(shell rules; an unbalanced legacy quote falls back to the raw value). Portal
+suite 39 → 41.
+
 ## 2026-09-11 — provision-sso.py checks Conditional Access MFA coverage (#41)
 
 Registering `<code>-sso` makes Entra the login for every platform surface, but

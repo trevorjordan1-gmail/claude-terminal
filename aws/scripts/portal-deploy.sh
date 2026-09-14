@@ -20,18 +20,22 @@ python3 -m venv /opt/asp/portal-venv
 CONF=$(aws ssm get-parameter --region "$ASP_REGION" --name /asp/portal/config --query Parameter.Value --output text)
 SECRETS=$(aws ssm get-parameter --region "$ASP_REGION" --name /asp/portal/secrets --with-decryption --query Parameter.Value --output text)
 
+# Every value is shell-quoted (#38): a bare `ASP_BRAND=Acme Terminals` is a prefix
+# assignment to a command called `Terminals` for anything that sources this file —
+# #12's portal-side twin. config.py reads quoted and legacy-unquoted lines alike.
+sq() { printf "'%s'" "${1//\'/\'\\\'\'}"; }   # single-quote, splicing any ' as '\'' (bootstrap.sh.tftpl, #12)
 umask 077
 {
-  echo "ASP_PORTAL_HOST=$ASP_PORTAL_HOST"
-  echo "ASP_GW_HOST=$ASP_GW_HOST"
-  echo "ASP_REGION=$ASP_REGION"
-  echo "ASP_CUSTOMER=$ASP_CUSTOMER"
-  echo "ASP_BUCKET=$ASP_BUCKET"
-  echo "ASP_PROFILE=${ASP_PROFILE:-standard}"
-  echo "ASP_BRAND=${ASP_BRAND:-Claude Code Terminals}"
-  echo "ASP_BROKER_SHORT=$(hostname -s)"
-  echo "$CONF"    | python3 -c 'import json,sys; [print(f"{k}={v}") for k,v in json.load(sys.stdin).items()]'
-  echo "$SECRETS" | python3 -c 'import json,sys; [print(f"{k}={v}") for k,v in json.load(sys.stdin).items()]'
+  echo "ASP_PORTAL_HOST=$(sq "$ASP_PORTAL_HOST")"
+  echo "ASP_GW_HOST=$(sq "$ASP_GW_HOST")"
+  echo "ASP_REGION=$(sq "$ASP_REGION")"
+  echo "ASP_CUSTOMER=$(sq "$ASP_CUSTOMER")"
+  echo "ASP_BUCKET=$(sq "$ASP_BUCKET")"
+  echo "ASP_PROFILE=$(sq "${ASP_PROFILE:-standard}")"
+  echo "ASP_BRAND=$(sq "${ASP_BRAND:-Claude Code Terminals}")"
+  echo "ASP_BROKER_SHORT=$(sq "$(hostname -s)")"
+  echo "$CONF"    | python3 -c 'import json,shlex,sys; [print(f"{k}={shlex.quote(str(v))}") for k,v in json.load(sys.stdin).items()]'
+  echo "$SECRETS" | python3 -c 'import json,shlex,sys; [print(f"{k}={shlex.quote(str(v))}") for k,v in json.load(sys.stdin).items()]'
   [ -f /etc/asp-broker-client.env ] && cat /etc/asp-broker-client.env
 } > /etc/asp-portal.env
 

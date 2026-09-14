@@ -10,12 +10,27 @@ CERT_DIR="/etc/letsencrypt/live/$ASP_PORTAL_HOST"
 
 apt-get install -y --no-install-recommends python3-certbot-dns-cloudflare >/dev/null
 
-# certbot credentials file from SSM (never in git / user-data)
-if [ ! -f /root/.secrets/cloudflare.ini ]; then
+# certbot credentials file from SSM (never in git / user-data).
+# The control plane runs this at first boot, BEFORE /asp/cloudflare/token can exist on a
+# fresh tenant (runbook §4 comes after the apply). An absent parameter used to be cached as
+# an EMPTY token, and every later run then skipped the fetch and failed inside certbot with
+# "Either dns_cloudflare_api_token ... are required" — two layers away from the cause (#38).
+# So: a cached file only counts if it actually carries a token, and a missing/empty
+# parameter is FATAL here, by name, with the fix.
+INI=/root/.secrets/cloudflare.ini
+if ! grep -qE '^dns_cloudflare_api_token = .+' "$INI" 2>/dev/null; then
   mkdir -p /root/.secrets && chmod 700 /root/.secrets
+  set +x   # the token must not land in the SSM command log via xtrace
   TOKEN=$(aws ssm get-parameter --region "$ASP_REGION" --name /asp/cloudflare/token \
-    --with-decryption --query Parameter.Value --output text)
-  ( umask 077 && printf 'dns_cloudflare_api_token = %s\n' "$TOKEN" > /root/.secrets/cloudflare.ini )
+    --with-decryption --query Parameter.Value --output text 2>/dev/null) || TOKEN=""
+  if [ -z "$TOKEN" ] || [ "$TOKEN" = "None" ]; then
+    echo "cp-tls: FATAL — SSM parameter /asp/cloudflare/token is missing or empty; create it (runbook §4," >&2
+    echo "        account-foundations.md §7) and re-run cp-tls.sh via SSM. Nothing was cached." >&2
+    rm -f "$INI"
+    exit 1
+  fi
+  ( umask 077 && printf 'dns_cloudflare_api_token = %s\n' "$TOKEN" > "$INI" )
+  set -x
 fi
 
 # ONE wildcard covers portal, gw AND every per-terminal vanity alias: the native
@@ -97,8 +112,20 @@ if [ -z "$HC_URL" ] && [ -f /etc/asp-cert.env ]; then
 fi
 ( umask 077; printf "CERT_HEALTHCHECK_URL='%s'\n" "$HC_URL" > /etc/asp-cert.env )
 
-install -m 0755 "$(dirname "$0")/cert-expiry-check.sh" /opt/asp/cert-expiry-check.sh 2>/dev/null \
-  || echo "cp-tls: cert-expiry-check.sh not alongside this script — copy it to /opt/asp/ by hand" >&2
+# The checker is staged like every other script: from the tenant bucket. When this script
+# itself runs from /opt/asp (the SSM pattern), "alongside" IS the destination — the old
+# `install` onto itself failed and printed a false "not alongside" while the timer was
+# armed and running (#38). Same-file → already in place; else bucket; else alongside; else say so.
+SRC="$(dirname "$0")/cert-expiry-check.sh"; DST=/opt/asp/cert-expiry-check.sh
+if [ -e "$SRC" ] && [ "$SRC" -ef "$DST" ]; then
+  chmod 0755 "$DST"
+elif aws s3 cp "s3://$ASP_BUCKET/scripts/cert-expiry-check.sh" "$DST" >/dev/null 2>&1; then
+  chmod 0755 "$DST"
+elif [ -e "$SRC" ]; then
+  install -m 0755 "$SRC" "$DST"
+elif [ ! -x "$DST" ]; then
+  echo "cp-tls: cert-expiry-check.sh is neither in the bucket nor alongside this script — the expiry timer has nothing to run; rollout.sh scripts, then re-run" >&2
+fi
 cat > /etc/systemd/system/asp-cert-check.service <<'UNIT'
 [Unit]
 Description=Check how close the control-plane TLS cert is to expiry
