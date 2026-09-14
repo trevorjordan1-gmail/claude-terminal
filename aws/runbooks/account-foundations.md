@@ -61,8 +61,10 @@ aws iam create-access-key --user-name $U        # → AccessKeyId + SecretAccess
 - No console password for this user (nothing to phish; it is a key pair, not a person).
 - The key pair goes into the pack as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, with
   `AWS_ACCOUNT_ID`, `AWS_REGION`, `AWS_BUILD_USER=aiops-terraform`. Hudu holds the same
-  values as the root of trust. (`pack-verify.sh` does not probe these yet — verify by hand
-  with the check below.)
+  values as the root of trust. `pack-verify.sh` probes them (#48): when the pack declares
+  `AWS_ACCESS_KEY_ID` it calls STS with those keys — FAIL on a `:root` ARN, FAIL when the
+  account differs from `AWS_ACCOUNT_ID` (recorded from the answer when empty), `AWS_REGION`
+  must be a region code — and a pack without AWS keys is a counted SKIP, not a failure.
 - If the client already runs **IAM Identity Center** (SSO), a permission set + `aws sso login`
   is the better shape for humans; keep the IAM user anyway for the unattended parts of the
   build (rollouts, budgets, the daily self-update publish).
