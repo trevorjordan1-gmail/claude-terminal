@@ -20,7 +20,8 @@ Read from mutter's source, not observed — function names so it can be re-check
 - Hence 4×800x600 is the guaranteed outcome of every gnome-shell start. The #20
   pre-mode, the `--off` collapse and the portal's Connect-time layout cannot
   survive it. **Any later gnome-shell restart** (paint-probe TERM, crash →
-  `Restart=always`) replays the same default after the #42 guard's 60 s.
+  `Restart=always`) replays the same default; the #42 guard now re-arms on that
+  restart (#47), but a stored layout would make the replay itself harmless.
 - At runtime (`meta_monitor_manager_xrandr_handle_xevent`) an external RandR
   change is accepted as-is **unless** the server bumped `configTimestamp`, which
   only mode-LIST changes do (`RROutputSetModes`, `--addmode`); then the decision

@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-09-14 — session-layout-guard stays resident and re-arms on a gnome-shell restart (#47)
+
+The #42 guard corrected the four-head default for the first 60 s and exited.
+That covers the first gnome-shell only: mutter replays the same default on
+EVERY shell start (#43 — `ensure_configured` never looks at the current X
+state), so a later restart — the paint probe's TERM (#21), a crash under
+`Restart=always` — put the four 800x600 heads back hours into a good session
+with nothing left to correct them. That is the shape a "4 screens" report deep
+into a session would have had.
+
+`aws/scripts/session-layout-guard.sh` now keeps a cheap loop after its first
+window (a `pgrep` every 2 s) and re-runs the 60 s correction window whenever
+gnome-shell's PID changes, logging `shell restarted (pid A → B), re-arming`;
+each window ends with `done: window=first|re-arm corrections=N`. It exits when
+the X server goes away (three failed `xrandr --query` polls), and holds a
+`flock` under `XDG_RUNTIME_DIR` so a re-run of `dcvsessioninit` cannot stack
+guards (`already guarding :N — exiting`). Reaches boxes on the next
+`rollout.sh scripts` + wake.
+
+New `aws/tests/session-layout-guard-harness.sh` — stubbed xrandr (state-file
+driven), fake pgrep, captured logger: first window corrects once, no re-arm
+while the PID is stable, PID change re-arms and corrects again, second instance
+exits at once, X gone → guard exits. Lives outside `aws/scripts/` so
+`rollout.sh` never ships it. No field test needed for this change; #43's
+stored-`monitors.xml` experiment is still the prevention to test.
+
 ## 2026-09-13 — cp-tls.sh cached an empty Cloudflare token; portal env values quoted (#38)
 
 The control plane runs `cp-setup.sh` at first boot, before `/asp/cloudflare/token`
