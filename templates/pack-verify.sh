@@ -13,9 +13,12 @@ set -uo pipefail
 ENVFILE="${1:-./.env}"
 [ "${ENVFILE}" = "--lint" ] && { ENVFILE="./.env"; set -- "$ENVFILE" --lint; }
 LINT_ONLY=0; [ "${2:-}" = "--lint" ] && LINT_ONLY=1
-PASS=0; FAIL=0
+PASS=0; FAIL=0; SKIP=0
 ok()   { PASS=$((PASS+1)); echo "- **PASS** — $1${2:+ · \`$2\`}"; return 0; }
 bad()  { FAIL=$((FAIL+1)); echo "- **FAIL** — $1${2:+ · \`$2\`}"; return 0; }
+# A probe the pack does not declare is a counted SKIP with its reason (#13/#18: verify what
+# the pack declares; every SKIP needs a reason) — never a silent PASS.
+skip() { SKIP=$((SKIP+1)); echo "- **SKIP** — $1${2:+ · \`$2\`}"; return 0; }
 
 # ── lint: the pack must source cleanly and completely ───────────────────────
 [ -f "$ENVFILE" ] || { echo "No env file at $ENVFILE"; exit 1; }
@@ -104,6 +107,16 @@ case "${MAIL_CAPABILITY:-}" in
   ""|outbound|inbound|both|none) : ;;
   *) bad "MAIL_CAPABILITY must be outbound/inbound/both/none" "${MAIL_CAPABILITY}"; MISS=1 ;;
 esac
+# AWS (#48, account-foundations.md §2): probed only when the pack declares a key — an
+# engagement without AWS must still pass. Static half here; the STS probe is full-run.
+if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
+  [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || { bad "AWS_SECRET_ACCESS_KEY empty while AWS_ACCESS_KEY_ID is set"; MISS=1; }
+  case "${AWS_REGION:-}" in
+    "") bad "AWS_REGION empty — the build needs it (e.g. us-east-2); the pack declares AWS keys"; MISS=1 ;;
+    *) echo "${AWS_REGION}" | grep -qE '^[a-z]{2}(-[a-z]+)+-[0-9]+$' \
+         || { bad "AWS_REGION is not a region code (us-east-2 shape)" "${AWS_REGION}"; MISS=1; } ;;
+  esac
+fi
 # GITHUB_CLASSIC = classic PAT, read:packages ONLY — ghcr.io refuses fine-grained PATs;
 # without it every deploy takes the build-on-droplet fallback instead of the CI image.
 [ "$MISS" -eq 0 ] && ok "pack lints clean ($ENVFILE: ${#REQUIRED[@]} names, sources cleanly)"
@@ -284,6 +297,42 @@ else
   bad "Healthchecks — read-only key was NOT refused a write (HTTP $ROC) — wrong key staged?"
 fi
 
+# ── AWS: the build identity must be an IAM user, never root (#48) ──────────
+# account-foundations.md §2: the pack carries one long-lived IAM build user. A pack that
+# arrives with the account ROOT user's keys (#40, hit for real) is exactly what that runbook
+# exists to prevent, and STS is the one call that tells them apart. Keys go to boto3 via the
+# environment the pack already exported — never interpolated into code.
+if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
+  skip "AWS — no AWS_ACCESS_KEY_ID in the pack (engagement without AWS: nothing to probe)"
+else
+  STS=$(uv run --quiet --with boto3 python3 - 2>>"$ERR" <<'PYEOF'
+import boto3,os
+c=boto3.client("sts",region_name=os.environ.get("AWS_REGION") or "us-east-1",
+               aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"])
+r=c.get_caller_identity(); print(r["Arn"],r["Account"])
+PYEOF
+)
+  read -r STS_ARN STS_ACCT <<<"${STS:-}"
+  case "${STS_ARN:-}" in
+    "") bad "AWS — sts get-caller-identity failed with the pack keys (wrong/expired keys, or uv/boto3 missing)"; why ;;
+    *:root) bad "AWS — the pack carries the account ROOT user's keys: mint the IAM build user (account-foundations.md §2), put ITS keys here, then delete these" "$STS_ARN" ;;
+    *:user/*|*:assumed-role/*)
+      if [ -n "${AWS_ACCOUNT_ID:-}" ] && [ "$AWS_ACCOUNT_ID" != "$STS_ACCT" ]; then
+        bad "AWS — the keys belong to account $STS_ACCT but the pack says AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" "$STS_ARN"
+      else
+        ok "AWS — build identity is an IAM principal in account $STS_ACCT (not root)" "$STS_ARN"
+        [ -n "${AWS_ACCOUNT_ID:-}" ] || pack_record AWS_ACCOUNT_ID "$STS_ACCT"
+        case "${AWS_BUILD_USER:-}" in
+          "") : ;;
+          *) case "$STS_ARN" in *:user/"$AWS_BUILD_USER") : ;;
+               *) echo "  (note: AWS_BUILD_USER=$AWS_BUILD_USER but the keys resolve to $STS_ARN — transcription slip, or Identity Center)" ;;
+             esac ;;
+        esac
+      fi ;;
+    *) bad "AWS — caller ARN is neither :user/ nor :assumed-role/" "$STS_ARN" ;;
+  esac
+fi
+
 echo ""
-echo "verdict: $PASS pass · $FAIL fail — $(date -I), probes cleaned up"
+echo "verdict: $PASS pass · $FAIL fail · $SKIP skip — $(date -I), probes cleaned up"
 exit "$((FAIL>0))"

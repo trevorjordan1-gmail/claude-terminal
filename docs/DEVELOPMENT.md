@@ -132,6 +132,8 @@ why in the module header.
    `python3 templates/entra-sso/test-provision-sso.py`
    The DCV layout guard has the same kind of harness (stubbed xrandr, fake
    pgrep, captured logger — ~25 s, no X): `bash aws/tests/session-layout-guard-harness.sh`.
+   `pack-verify.sh`'s AWS probe has one too (stubbed providers, a local fake
+   STS): `bash templates/test-pack-verify.sh`.
 6. Smoke: `./bootstrap.sh --list` and `--help`.
 7. Commit, push. Machines pick it up with
    `git -C ~/claude-terminal pull && ~/claude-terminal/bootstrap.sh`.

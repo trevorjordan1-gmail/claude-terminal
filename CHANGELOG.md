@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-09-14 — pack-verify probes the AWS build identity: an IAM user, never root (#48)
+
+`aws/runbooks/account-foundations.md` §2 puts `AWS_ACCOUNT_ID`, `AWS_REGION`,
+`AWS_BUILD_USER` and the IAM build user's key pair in the pack, and said in so
+many words that `pack-verify.sh` did not probe them. Until now a pack that
+arrived with the account ROOT user's keys (#40, hit for real) passed
+verification — the one thing that runbook exists to prevent.
+
+`templates/pack-verify.sh`, only when the pack declares `AWS_ACCESS_KEY_ID`
+(an engagement without AWS still passes — the #13 verify-what-the-pack-declares
+rule, now a counted **SKIP** with its reason; the verdict line gained a skip
+count): lint FAILs an empty secret or an `AWS_REGION` that is not a region code;
+the full run calls `sts get-caller-identity` with the pack keys (boto3 via uv,
+keys from the environment the pack exports — never interpolated into code) and
+FAILs on a `:root` ARN or an account that differs from `AWS_ACCOUNT_ID`, PASSes
+on `:user/` or `:assumed-role/`, records `AWS_ACCOUNT_ID` from the answer when
+the field is empty (#31 write rules: full run only, never overwrite, 0600 kept),
+and notes an `AWS_BUILD_USER` that does not match the ARN.
+
+New `templates/test-pack-verify.sh`: stubbed curl/restic, a dead proxy for
+every real boto3 endpoint, and a local fake STS — root → FAIL, user → PASS +
+recorded account, account mismatch → FAIL, undeclared → SKIP with STS never
+called, `--lint` never touches STS. Wired into DEVELOPMENT.md step 5.
 ## 2026-09-14 — session-layout-guard stays resident and re-arms on a gnome-shell restart (#47)
 
 The #42 guard corrected the four-head default for the first 60 s and exited.
