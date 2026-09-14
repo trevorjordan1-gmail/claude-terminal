@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-14 — relay-flow venue decided: a private window on the build box is the normal path (#46)
+
+Two templates gave two answers on where a client Global Admin performs the
+device-code sign-in (the engineer's own device vs. a private window on the
+terminal over DCV); the question rode inside #32 and #35 before getting its
+own issue. Operator decision: the build box is fine and is the normal path —
+the GA credential and its TOTP are rotating and held in Hudu, so a closed
+private window leaves nothing behind, and keeping the flow on one box is
+simpler. ENTRA-SSO.md states the rule once; PLATFORM-BUILD.md step 3,
+account-foundations.md §6.1 and the Grant-AiopsMail.ps1 comment now point at it
+instead of contradicting it. Docs only.
+
 ## 2026-09-14 — pack-verify probes the AWS build identity: an IAM user, never root (#48)
 
 `aws/runbooks/account-foundations.md` §2 puts `AWS_ACCOUNT_ID`, `AWS_REGION`,

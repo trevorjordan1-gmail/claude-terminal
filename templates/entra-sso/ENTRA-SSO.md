@@ -71,7 +71,11 @@ service-token probe ever exercises this redirect.
   15-min window): it prints ONE sign-in link (code pre-filled) and the engineer opens it
   and the engineer signs in. **The sign-in, in full: open the printed link in a private
   window, sign in as a Global Administrator of the client tenant, close the window.** That
-  is the whole job — any device, this desktop included.
+  is the whole job. **Venue (operator decision 2026-09-14, #46): a private window on the
+  build box over DCV is the normal path** — it keeps the flow in one place, and the GA
+  credential and its TOTP are rotating and held in Hudu, so nothing usable is left behind
+  once the window is closed. The engineer's own device works just as well; neither is
+  required. This paragraph is the one statement of that rule.
   - *Alternative, from the engineer's own machine:* any PowerShell,
     `./New-ClientSSO.ps1 -ClientCode <code> -TeamName <real-team> -AiopsUpn aiops@<clientdomain>`
     — browser sign-in pops locally. Two minutes. (Or the legacy relay:

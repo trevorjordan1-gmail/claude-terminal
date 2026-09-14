@@ -31,7 +31,7 @@ param(
   # UPN of the aiops service account whose mailbox the terminals use. The consent grant is
   # scoped to exactly this principal.
   [Parameter(Mandatory)] [string]$AiopsUpn,
-  # Sign in via device code (admin enters the printed code from their OWN device).
+  # Sign in via device code (admin enters the printed code in a private window — the build box or any device; ENTRA-SSO.md, #46).
   [switch]$DeviceCode,
   # Pre-acquired Graph access token via $env:GRAPH_TOKEN (the relay flow - preferred when
   # Claude runs this on a terminal; mint with get-graph-token-devicecode.sh).

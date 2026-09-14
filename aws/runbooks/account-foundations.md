@@ -143,8 +143,9 @@ terraform version                       # >= 1.10
 
 Every Entra step of the build happens in **one** device-code sitting by a Global Admin
 (Application Administrator is enough for the registrations but not for the admin-consent
-grants). Where that sign-in is performed — the engineer's own device via the relay — is
-governed by `templates/entra-sso/ENTRA-SSO.md`; this runbook does not change it.
+grants). Where that sign-in is performed — a private window on the build box is the normal
+path, the engineer's own device works too (#46) — is stated once in
+`templates/entra-sso/ENTRA-SSO.md`; this runbook does not change it.
 
 ### 6.2 App registrations — one per trust boundary, not one per client
 
