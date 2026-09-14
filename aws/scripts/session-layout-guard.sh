@@ -19,6 +19,15 @@
 # single head. It never fights a real client resize: a client can only produce a
 # single primary head at some size that is not 800x600 / 3200x600.
 #
+# It then stays resident (#47): mutter replays the same default on EVERY
+# gnome-shell start (#43 — ensure_configured never looks at the current X
+# state), so a later restart — the paint probe's TERM (#21), a crash under
+# Restart=always — would put the four heads back hours into a good session with
+# nothing left to correct them. A cheap loop watches gnome-shell's PID and re-runs
+# the correction window whenever it changes; the guard exits when the X server
+# does. One instance per session (flock under XDG_RUNTIME_DIR): a re-run of
+# dcvsessioninit must not stack guards.
+#
 # Signature of "wrong" (any one is enough):
 #   - any non-primary output is active (has +x+y geometry)
 #   - the X screen is 3200x600
@@ -26,6 +35,11 @@
 set -u
 TAG="asp-layout-guard"
 GUARD_SECONDS="${GUARD_SECONDS:-60}"
+GUARD_POLL_SECONDS="${GUARD_POLL_SECONDS:-2}"
+
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/asp-layout-guard.$(id -u).${DISPLAY//[^A-Za-z0-9]/_}.lock"
+exec 9>"$LOCK"
+flock -n 9 || { logger -t "$TAG" "already guarding ${DISPLAY:-?} — exiting"; exit 0; }
 
 PRIMARY=$(xrandr --query 2>/dev/null | awk '/ connected/{print $1; exit}')
 [ -n "$PRIMARY" ] || { logger -t "$TAG" "no RandR output visible on ${DISPLAY:-?} — not guarding"; exit 0; }
@@ -50,25 +64,53 @@ fix() {
          xrandr --output "$PRIMARY" --mode 1920x1080_60 --primary >/dev/null 2>&1; }
 }
 
+shell_pid() { pgrep -u "$(id -u)" -x gnome-shell 2>/dev/null | head -n 1; }
+current() { xrandr --query 2>/dev/null | grep -oE 'current [0-9]+ x [0-9]+'; }
+
+# One correction window: GUARD_SECONDS of re-asserting the single head whenever
+# the default signature shows up. $1 names the window in the journal.
+guard_window() {
+  local why=$1 n=0 end=$((SECONDS + GUARD_SECONDS)) before
+  while [ "$SECONDS" -lt "$end" ]; do
+    if bad; then
+      before=$(current)
+      fix; n=$((n + 1)); sleep 2
+      logger -t "$TAG" "corrected default layout (#$n): was '$before' now '$(current)'"
+    fi
+    sleep 1
+  done
+  logger -t "$TAG" "done: window=$why corrections=$n final=$(current) display=${DISPLAY:-?} user=$(id -un)"
+  # a shell that ran against 0.00 Hz for a while may have latched anyway — let the
+  # paint probe judge the pixels once more after we have corrected anything
+  if [ "$n" -gt 0 ] && [ -x /opt/asp/session-paint-probe.sh ]; then
+    /opt/asp/session-paint-probe.sh >/dev/null 2>&1 &
+  fi
+}
+
 # the clobberer is gnome-shell — wait for it (it is what we are guarding against)
 for _ in $(seq 1 40); do
-  pgrep -u "$(id -u)" -x gnome-shell >/dev/null 2>&1 && break
+  shell_pid >/dev/null && break
   sleep 1
 done
+pid=$(shell_pid)
+guard_window first
 
-n=0; end=$((SECONDS + GUARD_SECONDS))
-while [ "$SECONDS" -lt "$end" ]; do
-  if bad; then
-    before=$(xrandr --query 2>/dev/null | grep -oE 'current [0-9]+ x [0-9]+')
-    fix; n=$((n + 1)); sleep 2
-    logger -t "$TAG" "corrected default layout (#$n): was '$before' now '$(xrandr --query 2>/dev/null | grep -oE 'current [0-9]+ x [0-9]+')'"
+# Resident: re-arm on every gnome-shell restart; leave when the X server does.
+dead=0
+while :; do
+  sleep "$GUARD_POLL_SECONDS"
+  if xrandr --query >/dev/null 2>&1; then dead=0; else
+    dead=$((dead + 1))
+    [ "$dead" -lt 3 ] && continue
+    logger -t "$TAG" "display gone (${DISPLAY:-?}) — exiting"; exit 0
   fi
-  sleep 1
+  now=$(shell_pid)
+  { [ -n "$now" ] && [ "$now" != "$pid" ]; } || continue
+  if [ -n "$pid" ]; then
+    logger -t "$TAG" "shell restarted (pid $pid → $now), re-arming"
+  else
+    logger -t "$TAG" "shell appeared late (pid $now), arming"
+  fi
+  pid=$now
+  guard_window re-arm
 done
-logger -t "$TAG" "done: corrections=$n final=$(xrandr --query 2>/dev/null | grep -oE 'current [0-9]+ x [0-9]+') display=${DISPLAY:-?} user=$(id -un)"
-# a shell that ran against 0.00 Hz for a while may have latched anyway — let the
-# paint probe judge the pixels once more after we have corrected anything
-if [ "$n" -gt 0 ] && [ -x /opt/asp/session-paint-probe.sh ]; then
-  /opt/asp/session-paint-probe.sh >/dev/null 2>&1 &
-fi
-exit 0
