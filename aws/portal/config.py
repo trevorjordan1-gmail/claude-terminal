@@ -1,9 +1,23 @@
 """Portal configuration — read once from /etc/asp-portal.env (KEY=VALUE lines)."""
 
 import os
+import shlex
 import re
 
 ENV_FILE = os.environ.get("ASP_PORTAL_ENV", "/etc/asp-portal.env")
+
+
+def _unquote(v: str) -> str:
+    """portal-deploy.sh shell-quotes every value it writes (#38 — a bare multi-word
+    ASP_BRAND is a prefix assignment to anything that sources the file, #12's twin).
+    Read them the way a shell would; a legacy unquoted line reads as before."""
+    if not any(ch in v for ch in "'\"\\"):
+        return v                  # nothing a shell would interpret: legacy bare value, as is
+    try:
+        parts = shlex.split(v, posix=True)
+    except ValueError:            # unbalanced quote: a legacy raw value, not a quoted one
+        return v
+    return " ".join(parts)
 
 
 def _load() -> dict:
@@ -14,7 +28,7 @@ def _load() -> dict:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     k, v = line.split("=", 1)
-                    cfg[k.strip()] = v.strip()
+                    cfg[k.strip()] = _unquote(v.strip())
     cfg.update(os.environ)
     return cfg
 
