@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-09-13 — session-layout-guard: hold the single 1080p head through mutter's startup (#42)
+
+Field report from a first client Connect, with the DCV server and agent logs to
+prove the sequence: the #20 pre-mode lands at t+0.6 s and works; at t+2.0 s
+gnome-shell/mutter starts, sees all four Xdcv outputs as *connected*
+(`max-num-heads=1` only limits `-enabledoutputs`) and enables every one at its
+only mode — four 800x600 heads in a row, the "4 screens". The portal's
+Connect-time layout wins for about 100 ms; then the layout flips once more to a
+single 3200x600 head at 0.00 Hz, the #20 dead frame clock, and the paint probe
+at t+10 s sees the one painted frame and says ok. Every existing guard fires
+once and too early; mutter's own startup is the clobberer.
+
+New `aws/scripts/session-layout-guard.sh`, launched from `dcvsessioninit` beside
+the paint probe as the session user: waits for gnome-shell, then for 60 s
+re-asserts the single 1920x1080 head whenever the Xdcv default signature appears
+(any non-primary output active, screen 3200x600, or primary at 800x600). It
+cannot fight a real client resize — a client only ever produces one primary
+head at some other size — and it re-runs the paint probe after correcting.
+Authored and field-verified by the field agent (broker-created session:
+1920x1080 → 3200x600 → 1920x1080, one correction, painted desktop on
+screenshot); reviewed here against a stubbed xrandr for the six layouts that
+matter. `dcv-desktop-install.sh` stages it from the tenant bucket like the
+probe, so it reaches boxes on the next `rollout.sh scripts` + wake.
+
+Left as is: the portal's `force_display_layout` is still fire-and-forget and
+races session init — the desktop-side guard holds regardless of who connects.
+
 ## 2026-09-11 — provision-sso.py checks Conditional Access MFA coverage (#41)
 
 Registering `<code>-sso` makes Entra the login for every platform surface, but
