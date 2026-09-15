@@ -11,13 +11,18 @@
 #      challenge with the Cloudflare token, so a green dry-run IS the proof that the
 #      token's IP allowlist covers this box's egress (the CP uses its own EIP, not the
 #      NAT's). Dry-run touches Let's Encrypt staging only; the live cert is never changed.
+#      certbot holds one lock per box and certbot.timer fires twice a day at a random
+#      offset (#52): a collision is retried for ~CP_VERIFY_LOCK_WAIT×4 s, then reported as
+#      SKIP (certbot busy) — never as the allowlist FAIL, which sends someone into Cloudflare.
 #   3. the egress IP the allowlist must contain (informational)
 #   4. the expiry alarm's own verdict + its timer (cert-expiry-check.sh pings Healthchecks
 #      exactly as the daily timer would — the state it reports is the true state), and
 #      whether it has a ping URL at all (#50 — an alarm with nowhere to report is mute)
 #   5. the portal answers /healthz, and with which release
-#   6. /etc/asp-portal.env values are single-quoted (#38 — a bare value with a space was a
-#      prefix assignment when sourced)
+#   6. /etc/asp-portal.env sources safely (#38 — a bare value with a space was a prefix
+#      assignment when sourced). portal-deploy.sh writes through shlex.quote, which leaves a
+#      value BARE when it needs no quoting (#51), so the test is "bare AND carries a character
+#      a shell would act on", not "has quote marks".
 set -uo pipefail
 # shellcheck source=/dev/null  # written by the platform at boot; not in the repo
 [ -r /etc/asp-terminal.env ] && . /etc/asp-terminal.env
@@ -50,8 +55,21 @@ fi
 
 # ── 2. renewal dry-run = the Cloudflare allowlist test ─────────────────────────────────
 if [ -s "$RENEWAL_CONF" ]; then
-  if OUT=$(certbot renew --dry-run --cert-name "$HOST" 2>&1); then
+  # The lock is certbot's own (fcntl on /var/lib/letsencrypt/.certbot.lock — not testable with
+  # flock from here), so the probe is the run itself: its "Another instance" line is the
+  # signal. Up to 4 tries, CP_VERIFY_LOCK_WAIT s apart (default 15; the harness sets 0).
+  BUSY=0; DRY=1
+  for _try in 1 2 3 4; do
+    if OUT=$(certbot renew --dry-run --cert-name "$HOST" 2>&1); then DRY=0; BUSY=0; break; fi
+    if printf '%s\n' "$OUT" | grep -qi 'another instance of certbot is already running'; then
+      BUSY=1; sleep "${CP_VERIFY_LOCK_WAIT:-15}"; continue
+    fi
+    BUSY=0; break
+  done
+  if [ "$DRY" -eq 0 ]; then
     ok "renewal dry-run succeeded — DNS-01 ran from this box, so the Cloudflare token's IP allowlist covers this egress"
+  elif [ "$BUSY" -eq 1 ]; then
+    skip "renewal dry-run not run — certbot busy (its own certbot.timer, or another verify, holds the lock); re-run rollout.sh verify in a minute (#52)"
   else
     bad "renewal dry-run FAILED — check the Cloudflare token's IP allowlist against the egress below, then certbot.timer and the deploy hook"
     echo "  ↳ $(printf '%s\n' "$OUT" | grep -v '^[[:space:]]*$' | tail -n 1 | cut -c1-220)"
@@ -100,11 +118,16 @@ fi
 
 # ── 6. portal env quoting (#38) ─────────────────────────────────────────────────────────
 if [ -r /etc/asp-portal.env ]; then
-  BADL=$(grep -vE '^[[:space:]]*(#|$)' /etc/asp-portal.env | grep -vE "^[A-Za-z_][A-Za-z0-9_]*='.*'$" | cut -d= -f1 | tr '\n' ' ')
+  # Safe line shapes: KEY='…' (sq() / shlex when quoting was needed), KEY= (empty), or a bare
+  # value made only of shlex's safe set [A-Za-z0-9_@%+=:,./-] — exactly what shlex.quote
+  # leaves bare. Anything else (space, $, backtick, ;, &, |, <, >, *, ?, a stray quote…)
+  # is a value the shell would act on when the file is sourced.
+  BADL=$(grep -vE '^[[:space:]]*(#|$)' /etc/asp-portal.env \
+    | grep -vE "^[A-Za-z_][A-Za-z0-9_]*=('[^']*'|[A-Za-z0-9_@%+=:,./-]*)$" | cut -d= -f1 | tr '\n' ' ')
   if [ -z "$BADL" ]; then
-    ok "/etc/asp-portal.env — every value single-quoted (#38)"
+    ok "/etc/asp-portal.env — sources safely: every value quoted or shell-safe bare (#38, #51)"
   else
-    bad "/etc/asp-portal.env — unquoted value(s): ${BADL% }— re-run portal-deploy.sh (#38 quotes them)"
+    bad "/etc/asp-portal.env — bare value(s) a shell would act on when sourced: ${BADL% } — re-run portal-deploy.sh (#38 quotes them; a value still listed after that was edited by hand)"
   fi
 else
   skip "/etc/asp-portal.env absent — portal not deployed here"

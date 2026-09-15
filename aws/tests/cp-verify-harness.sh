@@ -19,7 +19,8 @@ has()   { grep -qE -- "$2" "$1" && pass "has /$2/" || fail "lacks /$2/  ($(tr '\
 # shellcheck disable=SC2015
 hasnt() { grep -qE -- "$2" "$1" && fail "unexpectedly has /$2/" || pass "has no /$2/"; }
 
-# run_case OUT then env assignments: LINEAGE=1|0 DRYRUN=ok|fail TIMER=active|inactive ENVQUOTED=1|0 HCURL=1|0
+# run_case OUT then env assignments: LINEAGE=1|0 DRYRUN=ok|fail|busy|busy-then-ok TIMER=active|inactive
+#   ENVQUOTED=1|shlex|0 HCURL=1|0. CP_VERIFY_LOCK_WAIT=0 keeps the certbot-busy retry from sleeping.
 run_case() {
   local out=$1; shift; local envs=()
   for e in "$@"; do envs+=(-e "$e"); done
@@ -32,13 +33,22 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 80 -subj "/CN=*.zone.test" -adde
 [ "$LINEAGE" = 1 ] && echo "cert_name = portal.zone.test" >/etc/letsencrypt/renewal/portal.zone.test.conf
 cp /kit/aws/scripts/cert-expiry-check.sh /opt/asp/cert-expiry-check.sh; chmod +x /opt/asp/cert-expiry-check.sh
 if [ "${HCURL:-1}" = 1 ]; then echo "CERT_HEALTHCHECK_URL='https://hc-ping.com/abc'" >/etc/asp-cert.env; else echo "CERT_HEALTHCHECK_URL=''" >/etc/asp-cert.env; fi
-if [ "$ENVQUOTED" = 1 ]; then printf "ASP_CUSTOMER='"'"'acme'"'"'\nASP_PROFILE='"'"'standard'"'"'\n" >/etc/asp-portal.env
-else printf "ASP_CUSTOMER='"'"'acme'"'"'\nASP_BRAND=Acme Terminals\n" >/etc/asp-portal.env; fi
+case "$ENVQUOTED" in
+  1)     printf "ASP_CUSTOMER='"'"'acme'"'"'\nASP_PROFILE='"'"'standard'"'"'\n" >/etc/asp-portal.env ;;
+  shlex) # what portal-deploy.sh really writes (#51): shlex.quote leaves safe values BARE
+         printf "ASP_CUSTOMER='"'"'acme'"'"'\nASP_BRAND='"'"'Acme Terminals'"'"'\nBROKER_VERIFY_TLS=false\nENTRA_TENANT_ID=3e0d7d89-0000-4000-8000-000000000000\nSUBNET_IDS=subnet-06b,subnet-01e\nBROKER_URL=https://broker.zone.test:8443\nASP_GW_VANITY=\n" >/etc/asp-portal.env ;;
+  *)     printf "ASP_CUSTOMER='"'"'acme'"'"'\nASP_BRAND=Acme Terminals\nSESSION_SECRET=ab\$cd\nBROKER_URL='"'"'https://x'"'"'\n" >/etc/asp-portal.env ;;
+esac
 cat >/usr/local/bin/certbot <<C
 #!/bin/bash
 echo "certbot \$*" >>/tmp/calls
-if [ "$DRYRUN" = ok ]; then echo "Simulating renewal of an existing certificate for *.zone.test"; echo "Congratulations, all simulated renewals succeeded"; exit 0
-else echo "Certbot failed to authenticate some domains (authenticator: dns-cloudflare)"; echo "Error determining zone_id: 6003 Invalid request headers"; exit 1; fi
+n=\$(grep -c "certbot renew" /tmp/calls)
+mode="$DRYRUN"; [ "\$mode" = busy-then-ok ] && { [ "\$n" -ge 2 ] && mode=ok || mode=busy; }
+case "\$mode" in
+  ok)   echo "Simulating renewal of an existing certificate for *.zone.test"; echo "Congratulations, all simulated renewals succeeded"; exit 0;;
+  busy) echo "Another instance of Certbot is already running."; exit 1;;
+  *)    echo "Certbot failed to authenticate some domains (authenticator: dns-cloudflare)"; echo "Error determining zone_id: 6003 Invalid request headers"; exit 1;;
+esac
 C
 cat >/usr/local/bin/curl <<C
 #!/bin/bash
@@ -49,7 +59,7 @@ cat >/usr/local/bin/systemctl <<C
 case "\$*" in *is-active*asp-cert-check.timer*) echo $TIMER; [ "$TIMER" = active ];; *) exit 0;; esac
 C
 chmod +x /usr/local/bin/*
-bash /kit/aws/scripts/cp-verify.sh; echo "exit=$?"; echo "calls: $(cat /tmp/calls 2>/dev/null | tr "\n" ";")"
+CP_VERIFY_LOCK_WAIT=0 bash /kit/aws/scripts/cp-verify.sh; echo "exit=$?"; echo "calls: $(cat /tmp/calls 2>/dev/null | tr "\n" ";")"
 ' >"$out" 2>&1
 }
 
@@ -81,16 +91,33 @@ has .h3 'FAIL.*renewal dry-run.*allowlist'
 has .h3 'Error determining zone_id'
 has .h3 'exit=1'
 
-echo "4. timer inactive + an unquoted portal env value → both FAIL"
+echo "4. timer inactive + bare portal env values a shell would act on (space, \$) → both FAIL, keys named, quoted one not"
 run_case "$PWD/.h4" LINEAGE=1 DRYRUN=ok TIMER=inactive ENVQUOTED=0
 has .h4 'FAIL.*asp-cert-check\.timer'
-has .h4 'FAIL.*asp-portal\.env.*ASP_BRAND'
+has .h4 'FAIL.*asp-portal\.env.*ASP_BRAND SESSION_SECRET — '
+hasnt .h4 'FAIL.*asp-portal\.env.*BROKER_URL'
 has .h4 'exit=1'
+echo "6. the env file exactly as portal-deploy.sh writes it (shlex.quote: safe values bare) → PASS (#51)"
+run_case "$PWD/.h6" LINEAGE=1 DRYRUN=ok TIMER=active ENVQUOTED=shlex
+has .h6 'PASS.*asp-portal\.env'
+hasnt .h6 'FAIL.*asp-portal\.env'
+has .h6 'exit=0'
+echo "7. certbot busy on the first try, free on the second → dry-run retried, PASS (#52)"
+run_case "$PWD/.h7" LINEAGE=1 DRYRUN=busy-then-ok TIMER=active ENVQUOTED=1
+has .h7 'PASS.*renewal dry-run'
+has .h7 'calls: certbot renew --dry-run[^;]*;certbot renew --dry-run'
+has .h7 'exit=0'
+echo "8. certbot stays busy → SKIP naming certbot busy with a retry hint, never the allowlist, exit 0 (#52)"
+run_case "$PWD/.h8" LINEAGE=1 DRYRUN=busy TIMER=active ENVQUOTED=1
+has .h8 'SKIP.*renewal dry-run.*certbot busy'
+hasnt .h8 'FAIL.*renewal dry-run'
+hasnt .h8 'allowlist against'
+has .h8 'exit=0'
 echo "5. expiry alarm armed with an empty ping URL → FAIL that names it MUTE and the SSM parameter (#50)"
 run_case "$PWD/.h5" LINEAGE=1 DRYRUN=ok TIMER=active ENVQUOTED=1 HCURL=0
 has .h5 'FAIL.*expiry alarm.*MUTE.*/asp/healthchecks/api-key'
 has .h5 'exit=1'
-rm -f .h1 .h2 .h3 .h4 .h5
+rm -f .h1 .h2 .h3 .h4 .h5 .h6 .h7 .h8
 echo
 # shellcheck disable=SC2015
 [ "$FAILS" = 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

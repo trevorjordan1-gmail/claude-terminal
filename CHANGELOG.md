@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-09-14 — cp-verify: the env-quoting check tests what the deployer writes; a certbot lock collision is a SKIP, not the allowlist FAIL (#51, #52)
+
+Both found by the operator's agent on the first `rollout.sh verify` after the
+v2026.09.14-3 rollout; neither was a defect on the box.
+
+**#51 — check 6 could never pass.** It required every `/etc/asp-portal.env`
+line to be literally single-quoted, but `portal-deploy.sh` writes the config
+and secrets values through `shlex.quote`, which by design leaves a value BARE
+when it needs no quoting (`BROKER_VERIFY_TLS=false`, a UUID, a subnet list) —
+that bareness *is* the guarantee. So a freshly deployed CP FAILed, and the
+remediation ("re-run portal-deploy.sh") reproduced it. The invariant #38 wants
+is "sources safely", so the check now accepts `KEY='…'`, `KEY=` and a bare
+value made only of shlex's safe set `[A-Za-z0-9_@%+=:,./-]`, and FAILs only a
+bare value carrying a character a shell would act on — the message names the
+keys and says a key still listed after a re-deploy was edited by hand. The
+stray `KEY— re-run` em-dash is fixed with it.
+
+**#52 — a certbot lock collision read as a Cloudflare token problem.** The
+renewal dry-run had no interlock with the box's own `certbot.timer` (twice a
+day, random offset) or a second verify; losing the race printed "check the
+Cloudflare token's IP allowlist", which sends someone into Cloudflare to
+re-scope a token that is fine. certbot's lock is fcntl-based, so the probe is
+the run itself: on "Another instance of Certbot is already running" the check
+retries up to four times, `CP_VERIFY_LOCK_WAIT` s apart (default 15), and
+reports `SKIP — certbot busy` with a retry hint if it never gets the lock.
+Two runbook gotchas ride along: the lock message, and the trap the agent hit
+inside it — `GET /user/tokens/verify` answers `Invalid API Token` for a
+working zone-scoped token (it needs API-Tokens-Read on itself), so it is not
+a liveness test; the DNS-01 dry-run is.
+
+`aws/tests/cp-verify-harness.sh` 5 → 8 cases: the env file exactly as
+`portal-deploy.sh` writes it must PASS; space and `$` in a bare value FAIL by
+key while a quoted sibling is not named; busy-then-free retries to PASS;
+always-busy is a SKIP with exit 0.
+
 ## 2026-09-14 — pack-verify: `BOX_ROLE` splits the pack by box role; `GITHUB_CLASSIC` required; Cloudflare tokens get pinned (#54)
 
 The operator's agent's branch `aws/dcv-ai-build`, reviewed and reconciled with
