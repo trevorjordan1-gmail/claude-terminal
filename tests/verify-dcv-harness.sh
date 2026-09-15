@@ -6,10 +6,10 @@
 #   bash tests/verify-dcv-harness.sh        # ~5 s, exit 0 = all pass
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$HERE/.." && pwd)
-IMG=claude-terminal-harness
+IMG=claude-terminal-harness:2
 docker image inspect "$IMG" >/dev/null 2>&1 || docker build -q -t "$IMG" - <<'DF' >/dev/null
 FROM ubuntu:24.04
-RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl ca-certificates >/dev/null && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl ca-certificates python3 >/dev/null && rm -rf /var/lib/apt/lists/*
 DF
 FAILS=0
 pass() { echo "  ok   — $1"; }

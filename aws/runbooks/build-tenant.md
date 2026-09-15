@@ -106,6 +106,9 @@ aws ssm put-parameter --name /asp/portal/config --type String --overwrite --valu
 aws ssm put-parameter --name /asp/portal/secrets --type SecureString --overwrite --value \
  '{"ENTRA_CLIENT_SECRET":"<secret>","SESSION_SECRET":"<openssl rand -hex 32>"}'
 aws ssm put-parameter --name /asp/cloudflare/token --type SecureString --overwrite --value '<cf-token>'
+# cert-expiry alarm ping (#50): the Healthchecks MANAGEMENT key; without it the daily check arms MUTE
+# and cp-verify.sh reports FAIL until it exists (back-fill: put it, then `rollout.sh cp` + re-run cp-tls.sh)
+aws ssm put-parameter --name /asp/healthchecks/api-key --type SecureString --overwrite --value '<healthchecks-management-key>'
 ```
 
 ## 5. Upload scripts + portal, then Terraform
@@ -161,7 +164,12 @@ the Cloudflare proxy, and certbot DNS-01 doesn't care either way.
 ## 7. Provision the control plane (SSM, in this order)
 
 Run each via `aws ssm send-command --instance-ids <cp-id> --document-name AWS-RunShellScript --parameters 'commands=[...]'`;
-the pattern for every script: `aws s3 cp s3://<artifacts>/scripts/<x>.sh /opt/asp/<x>.sh && bash /opt/asp/<x>.sh`.
+the pattern for every script: **`aws/scripts/rollout.sh cp` first** (refreshes `/opt/asp` from the
+bucket), then SSM `bash /opt/asp/<x>.sh`. **A control plane's `/opt/asp` is a cache of the bucket and
+only `rollout.sh` refreshes it** (#49): `cp-setup.sh` stages the scripts once at first boot, nothing
+else ever updates them, and `rollout.sh scripts` only updates the bucket — so a bare re-run of
+`/opt/asp/<x>.sh` executes whatever shipped the day that CP was built (found on the operator tenant:
+re-runs of cp-tls.sh that predated #38 entirely).
 
 1. `cp-tls.sh` — certbot via Cloudflare DNS-01 (see §1 token warning) + gateway cert
    deploy-hook. It also arms **`asp-cert-check.timer`** (daily), which reports days-to-expiry
@@ -215,7 +223,7 @@ and `/etc/asp-portal.env` quoting. Any FAIL line fails the tenant. By hand on a 
 
 Scripts are the source of truth, S3 is the transport, SSM is the executor:
 ```
-edit scripts/<x>.sh → aws s3 sync scripts/ → SSM send-command "s3 cp + bash /opt/asp/<x>.sh"
+edit scripts/<x>.sh → rollout.sh scripts (bucket) → rollout.sh cp (the CP's /opt/asp, #49) → SSM "bash /opt/asp/<x>.sh"
 ```
 **Always `s3 sync` the whole scripts/ dir, never cp a single file** — a re-run
 of any stale script silently regresses live config (this exact drift re-broke
@@ -234,8 +242,8 @@ born current (boot pulls latest from the tenant bucket).
 | What changed | How it reaches deployments |
 |---|---|
 | **claude-terminal** (workbench/kit) | maintainer ships to its `main` → per tenant: SSM re-run of the get.sh bootstrap as each terminal's user (idempotent). One command per tenant fleet. |
-| **`aws/scripts/`** (desktop/DCV layer, watchdog) | commit → `aws s3 sync scripts/` to the tenant artifacts bucket → SSM re-run the touched script on affected instances |
-| **Portal** | commit → zip → `s3 cp portal.zip` → SSM `portal-deploy.sh` on the control plane |
+| **`aws/scripts/`** (desktop/DCV layer, watchdog) | commit → `rollout.sh scripts` (bucket) → SSM re-run the touched script on affected instances. **Control planes: `rollout.sh cp` first** — `/opt/asp` there is a cache of the bucket that only rollout.sh refreshes (#49) |
+| **Portal** | commit → `rollout.sh portal` (zip → bucket → the CP's *local* `portal-deploy.sh`; `rollout.sh all` refreshes that script first) |
 | **Infra** (Terraform) | `terraform apply` per tenant |
 
 **Paused terminals converge on their *next* wake — after it, not before.** A

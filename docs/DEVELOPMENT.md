@@ -135,8 +135,9 @@ why in the module header.
    `pack-verify.sh`'s AWS probe has one too (stubbed providers, a local fake
    STS): `bash templates/test-pack-verify.sh`.
    Container harnesses (docker, image built on first run): the control-plane
-   self-check `bash aws/tests/cp-verify-harness.sh`, its rollout layer
-   `bash aws/tests/rollout-verify-harness.sh`, and verify.sh's DCV checks
+   self-check `bash aws/tests/cp-verify-harness.sh`, cp-tls.sh
+   `bash aws/tests/cp-tls-harness.sh`, rollout.sh's control-plane layers
+   `bash aws/tests/rollout-harness.sh`, and verify.sh's DCV checks
    `bash tests/verify-dcv-harness.sh`.
 6. Smoke: `./bootstrap.sh --list` and `--help`.
 7. Commit, push. Machines pick it up with

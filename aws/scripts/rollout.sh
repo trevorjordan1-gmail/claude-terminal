@@ -1,13 +1,20 @@
 #!/bin/bash
 # Roll a change out to EVERY tenant (or --tenant NAME for one).
-# Usage: rollout.sh portal|scripts|workbench|all|verify [--tenant NAME]
+# Usage: rollout.sh portal|scripts|cp|workbench|all|verify [--tenant NAME]
 # The tenants.json registry IS the "did we get everywhere" checklist.
+# `cp` refreshes /opt/asp on every control plane from the bucket (#49): a CP stages its scripts
+# ONCE at first boot and nothing else ever updates them, so `/opt/asp` is a cache of the bucket
+# and this layer is the only thing allowed to refresh it. `all` runs it after `scripts` and
+# before `portal`, so the portal layer's `portal-deploy.sh` is the current one by construction.
 # `verify` is a READ, not a layer of `all`: it runs cp-verify.sh on every control plane over
 # SSM and prints each box's report (#27) — run it after a rollout, or any time.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
-LAYER="${1:?usage: rollout.sh portal|scripts|workbench|all|verify [--tenant NAME]}"
-case "$LAYER" in portal|scripts|workbench|all|verify) ;; *) echo "usage: rollout.sh portal|scripts|workbench|all|verify [--tenant NAME]" >&2; exit 2 ;; esac
+LAYER="${1:?usage: rollout.sh portal|scripts|cp|workbench|all|verify [--tenant NAME]}"
+case "$LAYER" in portal|scripts|cp|workbench|all|verify) ;; *) echo "usage: rollout.sh portal|scripts|cp|workbench|all|verify [--tenant NAME]" >&2; exit 2 ;; esac
+# the control plane's script set — what cp-setup.sh staged at first boot, plus what later
+# releases added (the expiry checker cp-tls.sh now depends on, and the verifier)
+CP_SCRIPTS="cp-tls.sh dcv-cp-install.sh portal-deploy.sh cert-expiry-check.sh cp-verify.sh"
 ONLY="${3:-}"; [ "${2:-}" = "--tenant" ] && ONLY="$3"
 VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo unknown)
 # tenant registry is PRIVATE — keep it out of this public repo
@@ -16,9 +23,9 @@ TENANTS_FILE="${ASP_TENANTS:-tenants.json}"
 echo "== rollout $LAYER @ $VERSION =="
 FAIL=0
 # ssm_run INSTANCE TIMEOUT_S COMMAND — run one shell command on a box and wait for the
-# invocation to finish (up to TIMEOUT_S) instead of a fixed sleep. Prints stdout; the
-# final status lands in SSM_STATUS.
-SSM_STATUS=""
+# invocation to finish (up to TIMEOUT_S) instead of a fixed sleep. Prints the box's stdout;
+# returns 0 only when the invocation ended Success. (Callers use it inside $(...), so the
+# status has to travel in the return code — a variable set here never reaches them.)
 ssm_run() {
   local id=$1 tmo=$2 cmd=$3 c st
   c=$(aws ssm send-command --instance-ids "$id" --document-name AWS-RunShellScript \
@@ -30,8 +37,8 @@ ssm_run() {
     st=$(aws ssm get-command-invocation --command-id "$c" --instance-id "$id" --query Status --output text 2>/dev/null)
     case "$st" in Success|Failed|TimedOut|Cancelled) break ;; esac
   done
-  SSM_STATUS=${st:-unknown}
   aws ssm get-command-invocation --command-id "$c" --instance-id "$id" --query StandardOutputContent --output text 2>/dev/null
+  [ "$st" = Success ] || { echo "   (invocation on $id ended: ${st:-unknown})" >&2; return 1; }
 }
 # shellcheck disable=SC2034  # PORTAL is a registry column we read for shape, not (yet) used here
 while IFS=$'\t' read -r NAME PROFILE REGION BUCKET CPID PORTAL; do
@@ -44,7 +51,18 @@ while IFS=$'\t' read -r NAME PROFILE REGION BUCKET CPID PORTAL; do
     echo "$VERSION" | aws s3 cp - "s3://$BUCKET/release/version" >/dev/null || ok=0
     echo "   scripts synced + release channel set to $VERSION (terminals self-apply within a day, or on wake)"
   fi
+  if [ "$LAYER" = "cp" ] || [ "$LAYER" = "all" ]; then
+    CMD=""
+    for f in $CP_SCRIPTS; do
+      CMD="${CMD}aws s3 cp s3://$BUCKET/scripts/$f /opt/asp/$f >/dev/null && chmod 755 /opt/asp/$f && echo refreshed $f || { echo MISSING $f — run rollout.sh scripts first; exit 1; }; "
+    done
+    CMD="${CMD}aws s3 cp s3://$BUCKET/scripts/tenant-custom-cp.sh /opt/asp/tenant-custom-cp.sh >/dev/null 2>&1 && chmod 755 /opt/asp/tenant-custom-cp.sh && echo refreshed tenant-custom-cp.sh; true"
+    OUT=$(ssm_run "$CPID" 120 "$CMD") || ok=0
+    printf '%s\n' "${OUT:-no output}" | sed 's/^/   cp: /'
+    printf '%s\n' "$OUT" | grep -q '^MISSING' && ok=0
+  fi
   if [ "$LAYER" = "portal" ] || [ "$LAYER" = "all" ]; then
+    # runs the CP's LOCAL /opt/asp/portal-deploy.sh — current only if the cp layer ran (#49)
     # stamp VERSION into a staging copy — never into the tracked portal/VERSION
     # (a dirty tree would make every later `git describe --dirty` lie)
     STAGE=$(mktemp -d); cp -r portal "$STAGE/portal"; echo "$VERSION" > "$STAGE/portal/VERSION"
@@ -54,7 +72,7 @@ while IFS=$'\t' read -r NAME PROFILE REGION BUCKET CPID PORTAL; do
     # portal-deploy pip-installs, so wait for the invocation to finish (up to
     # ~3 min) instead of a fixed sleep that reports a phantom VERSION MISMATCH
     OUT=$(ssm_run "$CPID" 300 "bash /opt/asp/portal-deploy.sh >/dev/null 2>&1; sleep 3; curl -s http://127.0.0.1:8080/healthz") || ok=0
-    echo "   portal healthz: $OUT (invocation: $SSM_STATUS)"
+    echo "   portal healthz: $OUT"
     echo "$OUT" | grep -q "\"version\":\"$VERSION\"" || { echo "   VERSION MISMATCH"; ok=0; }
   fi
   if [ "$LAYER" = "workbench" ] || [ "$LAYER" = "all" ]; then
@@ -94,7 +112,7 @@ if float(d.get("pct", 0)) < 100 and time.time() - float(d.get("ts", 0)) < 7200:
       printf '%s\n' "$REPORT" | sed 's/^/   /'
       printf '%s\n' "$REPORT" | grep -q '^- FAIL' && ok=0
     else
-      echo "   no report from $CPID (invocation: $SSM_STATUS)"; ok=0
+      echo "   no report from $CPID"; ok=0
     fi
   fi
   if [ "$ok" = 1 ]; then echo "   OK"; else echo "   FAILED"; FAIL=1; fi

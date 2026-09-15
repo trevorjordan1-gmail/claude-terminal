@@ -13,7 +13,8 @@
 #      NAT's). Dry-run touches Let's Encrypt staging only; the live cert is never changed.
 #   3. the egress IP the allowlist must contain (informational)
 #   4. the expiry alarm's own verdict + its timer (cert-expiry-check.sh pings Healthchecks
-#      exactly as the daily timer would — the state it reports is the true state)
+#      exactly as the daily timer would — the state it reports is the true state), and
+#      whether it has a ping URL at all (#50 — an alarm with nowhere to report is mute)
 #   5. the portal answers /healthz, and with which release
 #   6. /etc/asp-portal.env values are single-quoted (#38 — a bare value with a space was a
 #      prefix assignment when sourced)
@@ -77,6 +78,15 @@ if systemctl is-active --quiet asp-cert-check.timer 2>/dev/null; then
   ok "asp-cert-check.timer active (daily expiry check)"
 else
   bad "asp-cert-check.timer not active — re-run cp-tls.sh (it installs and enables the timer)"
+fi
+
+# ── 4b. the alarm has somewhere to report (#50) ─────────────────────────────────────────
+# shellcheck source=/dev/null  # written by cp-tls.sh
+HCU=$( [ -r /etc/asp-cert.env ] && . /etc/asp-cert.env; printf '%s' "${CERT_HEALTHCHECK_URL:-}" )
+if [ -n "$HCU" ]; then
+  ok "expiry alarm pings Healthchecks (CERT_HEALTHCHECK_URL set in /etc/asp-cert.env)"
+else
+  bad "expiry alarm is MUTE — armed with no ping URL, it only writes to a journal nobody reads: put SSM SecureString /asp/healthchecks/api-key (build-tenant §4), rollout.sh cp, re-run cp-tls.sh (#50)"
 fi
 
 # ── 5. portal ───────────────────────────────────────────────────────────────────────────
