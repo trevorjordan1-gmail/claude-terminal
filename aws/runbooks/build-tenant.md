@@ -216,7 +216,9 @@ operator box runs `cp-verify.sh` on every registered control plane over SSM and 
 its report — cp-tls steady state (a re-run would make no certbot call), `certbot renew
 --dry-run` (a real DNS-01 from the CP, so it IS the Cloudflare token allowlist test), the
 egress IP that allowlist must contain, the expiry alarm + its timer, the portal release,
-and `/etc/asp-portal.env` quoting. Any FAIL line fails the tenant. By hand on a CP:
+and that `/etc/asp-portal.env` sources safely (quoted, or shell-safe bare — the shape
+`portal-deploy.sh` actually writes, #51). A certbot lock collision on the dry-run is a
+SKIP with a retry hint, not a FAIL (#52). Any FAIL line fails the tenant. By hand on a CP:
 `sudo bash /opt/asp/cp-verify.sh`.
 
 ## 9. Iteration workflow (how to change anything)
@@ -272,6 +274,8 @@ change that spans both ships as one commit — no cross-repo contract dance.
 | SG rules vanish on apply | never mix inline SG rules with `aws_security_group_rule` on the same SG (control-plane SG is standalone-rules-only) |
 | Broker API port | broker client API default 8443 collides with the gateway → moved to **8446**; agents 8445; resolver 8447 |
 | CF token IP filter | see §1 — breaks in-tenant certbot with a confusing error |
+| `certbot renew --dry-run` says `Another instance of Certbot is already running` | a **lock collision**, not a token problem: `certbot.timer` fires twice a day at a random offset, and two verifies can overlap too. `cp-verify.sh` retries ~1 min then reports `SKIP — certbot busy` (never the allowlist FAIL — that sends someone into Cloudflare to re-scope a token that is fine); re-run `rollout.sh verify` (#52) |
+| `GET /client/v4/user/tokens/verify` answers `1000 Invalid API Token` for a token that works | that endpoint needs *User → API Tokens → Read* **on the token itself**; a correctly scoped zone-DNS token fails it exactly like a revoked one. It is NOT a liveness test — the DNS-01 dry-run is (`rollout.sh verify`), and `pack-verify.sh` uses `/accounts/{id}/tokens/verify` for the same reason (#41, #52) |
 | certbot: `Either dns_cloudflare_api_token ... are required` on every run, first boot onward | the control plane booted before `/asp/cloudflare/token` existed (§4 comes after the apply) and `cp-tls.sh` cached an EMPTY token, then skipped the fetch forever (#38). Now: a cached ini only counts if it carries a token, a missing/empty parameter is FATAL by name with the fix, and nothing is cached. Repair an old box: create the parameter, re-run `cp-tls.sh` via SSM (it re-fetches). The first boot WARNing on TLS is expected on every fresh tenant — `account-foundations.md` §8 has the re-run order |
 | Collab guests 403 at DCV | guests must exist as OS users on the target desktop — the portal creates them on demand at share time (`ensure_os_user` via SSM); provisioning writes the owner only |
 | (historical) Renaming/re-keying terraform-managed desktops destroyed them | desktops left terraform state 2026-08-15 (portal-provisioned from the launch template) — kept only as a warning if anyone puts instances back under `for_each` |
