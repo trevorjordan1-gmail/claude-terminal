@@ -20,14 +20,15 @@ has()   { grep -qE -- "$2" "$1" && pass "has /$2/" || fail "lacks /$2/  ($(tr '\
 hasnt() { grep -qE -- "$2" "$1" && fail "unexpectedly has /$2/" || pass "has no /$2/"; }
 
 # run_case OUT then env assignments: LINEAGE=1|0 DRYRUN=ok|fail|busy|busy-then-ok TIMER=active|inactive
-#   ENVQUOTED=1|shlex|0 HCURL=1|0. CP_VERIFY_LOCK_WAIT=0 keeps the certbot-busy retry from sleeping.
+#   ENVQUOTED=1|shlex|0 HCURL=1|0 BACKUPCONF=1|0 CFGKEY=<key> TENANTKEY=<key>.
+#   CP_VERIFY_LOCK_WAIT=0 keeps the certbot-busy retry from sleeping.
 run_case() {
   local out=$1; shift; local envs=()
   for e in "$@"; do envs+=(-e "$e"); done
   docker run --rm -v "$REPO:/kit:ro" "${envs[@]}" "$IMG" bash -c '
 set -u
 mkdir -p /opt/asp /etc/letsencrypt/live/portal.zone.test /etc/letsencrypt/renewal /usr/local/bin
-printf "ASP_PORTAL_HOST=portal.zone.test\nASP_GW_HOST=gw.zone.test\nASP_BUCKET=b\nASP_CUSTOMER=acme\n" >/etc/asp-terminal.env
+printf "ASP_PORTAL_HOST=portal.zone.test\nASP_GW_HOST=gw.zone.test\nASP_BUCKET=b\nASP_CUSTOMER=acme\nASP_REGION=us-east-2\n" >/etc/asp-terminal.env
 openssl req -x509 -newkey rsa:2048 -nodes -days 80 -subj "/CN=*.zone.test" -addext "subjectAltName=DNS:*.zone.test" \
   -keyout /etc/letsencrypt/live/portal.zone.test/privkey.pem -out /etc/letsencrypt/live/portal.zone.test/cert.pem >/dev/null 2>&1
 [ "$LINEAGE" = 1 ] && echo "cert_name = portal.zone.test" >/etc/letsencrypt/renewal/portal.zone.test.conf
@@ -59,6 +60,17 @@ cat >/usr/local/bin/curl <<C
 #!/bin/bash
 case "\$*" in *checkip*) echo 1.2.3.4;; *8080/healthz*) printf "{\"ok\":true,\"customer\":\"acme\",\"version\":\"v2026.09.14-2\"}";; *) exit 7;; esac
 C
+printf "{\"BACKUP_BUCKET\":\"bk\",\"RESTIC_PASSWORD\":\"rp\"%s}" "${CFGKEY:+,\"HEALTHCHECKS_API_KEY\":\"$CFGKEY\"}" >/tmp/cfg.json
+cat >/usr/local/bin/aws <<A
+#!/bin/bash
+# BACKUPCONF=1|0: the tenant has /asp/backup/config; CFGKEY / TENANTKEY: where a Healthchecks key lives (#53)
+echo "aws \$*" >>/tmp/calls
+case "\$*" in
+  *"/asp/backup/config"*)        [ "${BACKUPCONF:-0}" = 1 ] && cat /tmp/cfg.json || { echo ParameterNotFound >&2; exit 254; };;
+  *"/asp/healthchecks/api-key"*) [ -n "${TENANTKEY:-}" ] && echo "${TENANTKEY:-}" || { echo ParameterNotFound >&2; exit 254; };;
+  *) exit 0;;
+esac
+A
 cat >/usr/local/bin/systemctl <<C
 #!/bin/bash
 case "\$*" in *is-active*asp-cert-check.timer*) echo $TIMER; [ "$TIMER" = active ];; *) exit 0;; esac
@@ -122,7 +134,25 @@ echo "5. expiry alarm armed with an empty ping URL → FAIL that names it MUTE a
 run_case "$PWD/.h5" LINEAGE=1 DRYRUN=ok TIMER=active ENVQUOTED=1 HCURL=0
 has .h5 'FAIL.*expiry alarm.*MUTE.*/asp/healthchecks/api-key'
 has .h5 'exit=1'
-rm -f .h1 .h2 .h3 .h4 .h5 .h6 .h7 .h8
+echo "9. tenant has no /asp/backup/config → backup alarm check is a SKIP (nothing to alarm), not a FAIL (#53)"
+run_case "$PWD/.h9" LINEAGE=1 DRYRUN=ok TIMER=active ENVQUOTED=1 BACKUPCONF=0
+has .h9 'SKIP.*backup alarm.*no /asp/backup/config'
+has .h9 'exit=0'
+echo "10. backups enabled + the tenant-wide key → PASS naming /asp/healthchecks/api-key; the key itself never printed"
+run_case "$PWD/.h10" LINEAGE=1 DRYRUN=ok TIMER=active ENVQUOTED=1 BACKUPCONF=1 TENANTKEY=hcs3cretkey
+has .h10 'PASS.*backup alarm.*/asp/healthchecks/api-key'
+hasnt .h10 'hcs3cretkey'
+has .h10 'exit=0'
+echo "11. backups enabled + only the legacy key inside /asp/backup/config → PASS (existing tenants), names the legacy place"
+run_case "$PWD/.h11" LINEAGE=1 DRYRUN=ok TIMER=active ENVQUOTED=1 BACKUPCONF=1 CFGKEY=legacykey
+has .h11 'PASS.*backup alarm.*HEALTHCHECKS_API_KEY in /asp/backup/config'
+hasnt .h11 'legacykey'
+has .h11 'exit=0'
+echo "12. backups enabled + no key anywhere → FAIL: every terminal arms its backup alarm MUTE (#53)"
+run_case "$PWD/.h12" LINEAGE=1 DRYRUN=ok TIMER=active ENVQUOTED=1 BACKUPCONF=1
+has .h12 'FAIL.*backup alarm.*MUTE.*/asp/healthchecks/api-key'
+has .h12 'exit=1'
+rm -f .h1 .h2 .h3 .h4 .h5 .h6 .h7 .h8 .h9 .h10 .h11 .h12
 echo
 # shellcheck disable=SC2015
 [ "$FAILS" = 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

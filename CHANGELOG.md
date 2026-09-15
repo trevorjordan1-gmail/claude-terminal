@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-14 — one Healthchecks key arms every alarm: backup-arm.sh reads `/asp/healthchecks/api-key`; cp-verify reports a tenant whose backup alarms are mute (#53)
+
+Follow-on from #50, found on the operator tenant: the cert alarm reads
+`/asp/healthchecks/api-key`, the backup alarm read `HEALTHCHECKS_API_KEY` inside
+`/asp/backup/config` — a different parameter, a different key to remember —
+so #30's alarm was mute on the same tenant for the same reason, one alarm over.
+Operator's call on the issue: Healthchecks is the standard (it is where the
+rest of their monitoring lives; no second channel), so the fix is one key for
+every alarm. `backup-arm.sh` now prefers the tenant-wide SSM SecureString and
+falls back to the config field, so tenants armed before this keep working;
+the desktop IAM role may read the key (`iam.tf` `ReadBackupConfig` — existing
+tenants need a `terraform apply` before the back-fill lands); the "no ping"
+line is a stdout `CHECKLIST NOT DONE — backup alarm is MUTE` naming the
+parameter, like cp-tls's. Naming was already consistent (`cert-<customer>` /
+`backup-<client>-<machine>`, both tagged `asp`). `cp-verify.sh` gains the
+tenant-level view (4c): backups not enabled → SKIP; a key in either place →
+PASS naming which; backups enabled and no key anywhere → FAIL, so
+`rollout.sh verify` sees the mute state on both alarms, not one. Key values
+are never printed (the report lands in the SSM command log). Back-fill on a
+tenant = put the parameter; terminals re-arm on their next daily auto-update
+(`desktop-setup.sh` re-runs `backup-arm.sh`). New
+`aws/tests/backup-arm-harness.sh` (5 cases: which key wins, check name and
+tags, the MUTE line, no-config no-op); cp-verify harness 8 → 12.
+
 ## 2026-09-14 — cp-verify: the env-quoting check tests what the deployer writes; a certbot lock collision is a SKIP, not the allowlist FAIL (#51, #52)
 
 Both found by the operator's agent on the first `rollout.sh verify` after the

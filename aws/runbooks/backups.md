@@ -45,7 +45,7 @@ append the two lines to `/etc/asp-terminal.env` before arming it.
 | `BACKUP_ACCESS_KEY` / `BACKUP_SECRET_KEY` | credentials for that bucket |
 | `RESTIC_PASSWORD` | repo encryption password — **the one thing that cannot be regenerated** |
 | `BACKUP_KEEP` | optional `restic forget` flags; default `--keep-daily 7 --keep-weekly 4 --keep-monthly 6` |
-| `HEALTHCHECKS_API_KEY` | optional — lets `backup-arm.sh` mint one Healthchecks check per machine (`backup-<client>-<machine>`, upsert on the name) and wire its ping URL; see Monitoring |
+| `HEALTHCHECKS_API_KEY` | optional, **legacy** — the pre-#53 place for the Healthchecks management key. The standard is the tenant-wide SSM SecureString `/asp/healthchecks/api-key` (build-tenant §4), which arms the cert alarm and every backup alarm from one parameter; `backup-arm.sh` prefers it and falls back to this field. See Monitoring |
 | `HEALTHCHECKS_API_URL` | optional, default `https://healthchecks.io` (self-hosted instances) |
 
 Credentials come from this parameter rather than the instance role on purpose:
@@ -121,10 +121,17 @@ emergency response.
 1. `HEALTHCHECK_URL` in its environment at arm time (`HEALTHCHECK_URL=… bash
    /opt/asp/backup-arm.sh` over SSM), or `ASP_BACKUP_HC_URL` in `/etc/asp-terminal.env` —
    use this to point a box at a check that already exists;
-2. `HEALTHCHECKS_API_KEY` in the tenant config → upsert `backup-<client>-<machine>`
-   (period 1 day, grace 12 h, tags `asp backup <client>`); re-arming is idempotent;
+2. a Healthchecks management key → upsert `backup-<client>-<machine>` (period 1 day,
+   grace 12 h, tags `asp backup <client>`; the cert alarm is `cert-<customer>`, tags
+   `asp tls`, so one dashboard filter on `asp` finds both); re-arming is idempotent.
+   **One key arms every alarm (#53):** the tenant-wide SSM SecureString
+   `/asp/healthchecks/api-key` — the parameter `cp-tls.sh` reads for the cert alarm — wins;
+   `HEALTHCHECKS_API_KEY` inside `/asp/backup/config` is the fallback for tenants armed
+   before #53. The desktop role may read both (`iam.tf` `ReadBackupConfig`);
 3. the value the previous `/etc/asp-backup.env` carried — re-arming never drops it;
-4. none — the arm line says so out loud.
+4. none — the arm line says `CHECKLIST NOT DONE — backup alarm is MUTE` on stdout, and
+   `rollout.sh verify` reports the tenant as FAIL while backups are enabled with no key
+   anywhere (#53).
 
 **Triage rule: a DOWN backup check is a claim about pings, not about snapshots.** Before
 anything else, `restic snapshots --compact | tail -3` on the box (or the droplet helper
@@ -132,9 +139,12 @@ anything else, `restic snapshots --compact | tail -3` on the box (or the droplet
 monitoring gap (re-arm with a URL); stale snapshots = a backup problem
 (`journalctl -u asp-backup.service`).
 
-**Boxes armed before this landed** have no `HEALTHCHECK_URL` line. Re-run `backup-arm.sh`
-over SSM: with `HEALTHCHECKS_API_KEY` in the config it mints the check; to keep an existing
-check, pass its ping URL as `HEALTHCHECK_URL=…`.
+**Boxes armed before this landed** have no `HEALTHCHECK_URL` line (or an empty one). The
+back-fill is one parameter: `aws ssm put-parameter --name /asp/healthchecks/api-key --type
+SecureString --value '<management key>'` (after `terraform apply` on a tenant built before
+#53, so the desktop role may read it), then every terminal re-arms on its next daily
+auto-update (`desktop-setup.sh` re-runs `backup-arm.sh`) — or re-run it now over SSM. To
+keep an existing check, pass its ping URL as `HEALTHCHECK_URL=…`.
 
 ## Restore
 

@@ -136,7 +136,8 @@ why in the module header.
    providers, a local fake STS): `bash templates/test-pack-verify.sh`.
    Container harnesses (docker, image built on first run): the control-plane
    self-check `bash aws/tests/cp-verify-harness.sh`, cp-tls.sh
-   `bash aws/tests/cp-tls-harness.sh`, rollout.sh's control-plane layers
+   `bash aws/tests/cp-tls-harness.sh`, backup-arm.sh's Healthchecks key
+   resolution `bash aws/tests/backup-arm-harness.sh`, rollout.sh's control-plane layers
    `bash aws/tests/rollout-harness.sh`, and verify.sh's DCV checks
    `bash tests/verify-dcv-harness.sh`.
 6. Smoke: `./bootstrap.sh --list` and `--help`.

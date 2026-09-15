@@ -18,6 +18,9 @@
 #   4. the expiry alarm's own verdict + its timer (cert-expiry-check.sh pings Healthchecks
 #      exactly as the daily timer would — the state it reports is the true state), and
 #      whether it has a ping URL at all (#50 — an alarm with nowhere to report is mute)
+#      4c. the BACKUP alarms have a key too (#53): backup-arm.sh runs on every terminal, not
+#      here, so this is the tenant-level view — backups enabled (/asp/backup/config exists)
+#      and a Healthchecks key somewhere backup-arm.sh looks. Key values are never printed.
 #   5. the portal answers /healthz, and with which release
 #   6. /etc/asp-portal.env sources safely (#38 — a bare value with a space was a prefix
 #      assignment when sourced). portal-deploy.sh writes through shlex.quote, which leaves a
@@ -105,6 +108,29 @@ if [ -n "$HCU" ]; then
   ok "expiry alarm pings Healthchecks (CERT_HEALTHCHECK_URL set in /etc/asp-cert.env)"
 else
   bad "expiry alarm is MUTE — armed with no ping URL, it only writes to a journal nobody reads: put SSM SecureString /asp/healthchecks/api-key (build-tenant §4), rollout.sh cp, re-run cp-tls.sh (#50)"
+fi
+
+# ── 4c. the backup alarms have a key to register with (#53) ────────────────────────────
+# One key, every alarm: /asp/healthchecks/api-key (what cp-tls.sh reads) is the standard;
+# HEALTHCHECKS_API_KEY inside /asp/backup/config is the pre-#53 place and still works.
+# Neither value is echoed — this report lands in the SSM command log.
+R=(); [ -n "${ASP_REGION:-}" ] && R=(--region "$ASP_REGION")
+if ! command -v aws >/dev/null 2>&1; then
+  skip "backup alarm — aws CLI unavailable here; cannot read the tenant's SSM parameters"
+elif ! BC=$(aws ssm get-parameter "${R[@]}" --name /asp/backup/config --with-decryption --query Parameter.Value --output text 2>/dev/null) \
+     || [ -z "$BC" ] || [ "$BC" = None ]; then
+  skip "backup alarm — no /asp/backup/config in this tenant (backups not enabled; nothing to alarm)"
+else
+  TK=$(aws ssm get-parameter "${R[@]}" --name /asp/healthchecks/api-key --with-decryption --query Parameter.Value --output text 2>/dev/null) || TK=""
+  [ "$TK" = None ] && TK=""
+  CK=$(printf '%s' "$BC" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("HEALTHCHECKS_API_KEY",""))' 2>/dev/null)
+  if [ -n "$TK" ]; then
+    ok "backup alarm — terminals mint their check with /asp/healthchecks/api-key (one key, every alarm — #53)"
+  elif [ -n "$CK" ]; then
+    ok "backup alarm — terminals mint their check with the legacy HEALTHCHECKS_API_KEY in /asp/backup/config (works; /asp/healthchecks/api-key is the standard, #53)"
+  else
+    bad "backup alarm is MUTE on every terminal — backups enabled but no Healthchecks key anywhere: put SSM SecureString /asp/healthchecks/api-key (build-tenant §4); terminals re-arm on their next auto-update (#53)"
+  fi
 fi
 
 # ── 5. portal ───────────────────────────────────────────────────────────────────────────

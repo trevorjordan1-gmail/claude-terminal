@@ -32,7 +32,7 @@ AKID=$(read_conf BACKUP_ACCESS_KEY)
 ASECRET=$(read_conf BACKUP_SECRET_KEY)
 RPASS=$(read_conf RESTIC_PASSWORD)
 KEEP=$(read_conf BACKUP_KEEP); KEEP=${KEEP:-"--keep-daily 7 --keep-weekly 4 --keep-monthly 6"}
-HCKEY=$(read_conf HEALTHCHECKS_API_KEY)                  # optional: lets this script mint the check
+HCKEY=$(read_conf HEALTHCHECKS_API_KEY)                  # legacy (pre-#53): the key inside the backup config
 HCAPI=$(read_conf HEALTHCHECKS_API_URL); HCAPI=${HCAPI:-https://healthchecks.io}
 if [ -z "$BUCKET" ] || [ -z "$RPASS" ]; then
   echo "backup-arm: config present but incomplete (need BACKUP_BUCKET + RESTIC_PASSWORD) — not arming" >&2
@@ -64,11 +64,21 @@ REPO="s3:${ENDPOINT%/}/$BUCKET/$CLIENT/$MACHINE"
 #   1. HEALTHCHECK_URL in the environment at arm time (SSM: `HEALTHCHECK_URL=… bash
 #      /opt/asp/backup-arm.sh`), or ASP_BACKUP_HC_URL from /etc/asp-terminal.env —
 #      an existing check's ping URL, e.g. one created before this script could;
-#   2. HEALTHCHECKS_API_KEY in the tenant config → upsert a check named
-#      backup-<client>-<machine> (unique on the name, so re-arming is idempotent);
+#   2. a Healthchecks management key → upsert a check named backup-<client>-<machine>
+#      (unique on the name, so re-arming is idempotent). ONE key arms every alarm (#53):
+#      the tenant-wide SSM SecureString /asp/healthchecks/api-key — the same parameter
+#      cp-tls.sh reads for the cert alarm — wins; HEALTHCHECKS_API_KEY inside
+#      /asp/backup/config is the fallback so tenants armed before #53 keep working.
+#      The key is never echoed: this script's stdout lands in the SSM command log.
 #   3. whatever the previous /etc/asp-backup.env carried — re-arming never drops it;
 #   4. none — still armed, but silence will not alert; said out loud below.
 HC_URL="${HEALTHCHECK_URL:-${ASP_BACKUP_HC_URL:-}}"
+if [ -z "$HC_URL" ]; then
+  TKEY=$(aws ssm get-parameter --name /asp/healthchecks/api-key --with-decryption \
+          --region "$ASP_REGION" --query Parameter.Value --output text 2>/dev/null) || TKEY=""
+  [ "$TKEY" = "None" ] && TKEY=""
+  [ -n "$TKEY" ] && HCKEY="$TKEY"
+fi
 if [ -z "$HC_URL" ] && [ -n "$HCKEY" ]; then
   HC_URL=$(curl -fsS -m 15 -X POST -H "X-Api-Key: $HCKEY" \
     -d "{\"name\":\"backup-$CLIENT-$MACHINE\",\"tags\":\"asp backup $CLIENT\",\"timeout\":86400,\"grace\":43200,\"unique\":[\"name\"]}" \
@@ -176,5 +186,7 @@ systemctl enable --now asp-backup.timer
 if [ -n "$HC_URL" ]; then
   echo "backup-arm: armed $REPO (nightly 03:00 + catch-up on wake; pings Healthchecks)"
 else
-  echo "backup-arm: armed $REPO (nightly 03:00 + catch-up on wake) — NO monitoring ping: set HEALTHCHECKS_API_KEY in /asp/backup/config or re-arm with HEALTHCHECK_URL=<ping url>"
+  # stdout, not stderr: an SSM invocation's stderr is seen by nobody; this is a build checklist
+  # item that is not done, and cp-verify.sh reports the tenant as FAIL until it is (#53).
+  echo "backup-arm: CHECKLIST NOT DONE — backup alarm is MUTE (armed $REPO, nightly 03:00 + catch-up on wake, no ping URL): put SSM SecureString /asp/healthchecks/api-key (build-tenant §4 — one key arms the cert and backup alarms, #53); terminals re-arm on their next auto-update, or re-run this script over SSM. Legacy: HEALTHCHECKS_API_KEY in /asp/backup/config, or HEALTHCHECK_URL=<ping url> at arm time"
 fi
