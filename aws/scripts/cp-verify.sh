@@ -118,12 +118,14 @@ fi
 
 # ── 6. portal env quoting (#38) ─────────────────────────────────────────────────────────
 if [ -r /etc/asp-portal.env ]; then
-  # Safe line shapes: KEY='…' (sq() / shlex when quoting was needed), KEY= (empty), or a bare
-  # value made only of shlex's safe set [A-Za-z0-9_@%+=:,./-] — exactly what shlex.quote
-  # leaves bare. Anything else (space, $, backtick, ;, &, |, <, >, *, ?, a stray quote…)
-  # is a value the shell would act on when the file is sourced.
+  # A value is safe when it is built only from: '…' segments (sq() / shlex when quoting was
+  # needed), an escaped apostrophe \' (sq()'s splice: 'Bob'\''s'), a "…" segment with no
+  # $ ` or \ inside (shlex's splice: 'Bob'"'"'s' — no expansion possible), and bare characters
+  # from shlex's safe set [A-Za-z0-9_@%+=:,./-] — exactly what shlex.quote leaves bare.
+  # Anything else (space, $, backtick, ;, &, |, <, >, *, ?, a stray quote…) is a value the
+  # shell would act on when the file is sourced. KEY= (empty) is safe.
   BADL=$(grep -vE '^[[:space:]]*(#|$)' /etc/asp-portal.env \
-    | grep -vE "^[A-Za-z_][A-Za-z0-9_]*=('[^']*'|[A-Za-z0-9_@%+=:,./-]*)$" | cut -d= -f1 | tr '\n' ' ')
+    | grep -vE "^[A-Za-z_][A-Za-z0-9_]*=('[^']*'|\\\\'|\"[^\"\$\`\\\\]*\"|[A-Za-z0-9_@%+=:,./-])*$" | cut -d= -f1 | tr '\n' ' ')
   if [ -z "$BADL" ]; then
     ok "/etc/asp-portal.env — sources safely: every value quoted or shell-safe bare (#38, #51)"
   else

@@ -33,7 +33,12 @@ a liveness test; the DNS-01 dry-run is.
 `aws/tests/cp-verify-harness.sh` 5 → 8 cases: the env file exactly as
 `portal-deploy.sh` writes it must PASS; space and `$` in a bare value FAIL by
 key while a quoted sibling is not named; busy-then-free retries to PASS;
-always-busy is a SKIP with exit 0.
+always-busy is a SKIP with exit 0. Follow-on (`-6`): a brand with an
+apostrophe arrives spliced — `'Bob'\''s'` from `sq()`, `'Bob'"'"'s'` from
+shlex — and the first grammar flagged both although they source correctly;
+the value grammar now accepts `'…'` segments, `\'`, and `"…"` segments with
+no `$`/backtick/backslash inside, and the harness sources both forms to prove
+they are safe before asserting PASS.
 
 ## 2026-09-14 — pack-verify: `BOX_ROLE` splits the pack by box role; `GITHUB_CLASSIC` required; Cloudflare tokens get pinned (#54)
 
