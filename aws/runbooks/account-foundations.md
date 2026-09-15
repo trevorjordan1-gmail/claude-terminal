@@ -219,9 +219,11 @@ the first boot log shows a TLS WARN and the portal unit restarting on a missing
 1. `terraform apply` → note `controlplane_public_ip`, `egress_ip`, `dns_records_needed`.
 2. Create the DNS records (tenant runbook §6).
 3. Write the SSM parameters (§4 there) — `/asp/portal/config`, `/asp/portal/secrets`,
-   `/asp/cloudflare/token`.
-4. Re-run on the control plane via SSM, in this order: `cp-tls.sh` → `dcv-cp-install.sh`
-   → `portal-deploy.sh` (tenant runbook §7).
+   `/asp/cloudflare/token`, and `/asp/healthchecks/api-key` (without it the cert-expiry
+   alarm arms mute and `cp-verify.sh` reports FAIL, #50).
+4. `aws/scripts/rollout.sh cp` (refreshes the control plane's `/opt/asp` from the bucket —
+   it is a cache that nothing else updates, #49), then re-run via SSM, in this order:
+   `cp-tls.sh` → `dcv-cp-install.sh` → `portal-deploy.sh` (tenant runbook §7).
 5. Verify (§8 there).
 
 ## 9. What goes where

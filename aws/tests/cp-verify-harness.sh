@@ -6,10 +6,10 @@
 #   bash aws/tests/cp-verify-harness.sh        # ~10 s, exit 0 = all pass
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$HERE/../.." && pwd)
-IMG=claude-terminal-harness
+IMG=claude-terminal-harness:2
 docker image inspect "$IMG" >/dev/null 2>&1 || docker build -q -t "$IMG" - <<'DF' >/dev/null
 FROM ubuntu:24.04
-RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl ca-certificates >/dev/null && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl ca-certificates python3 >/dev/null && rm -rf /var/lib/apt/lists/*
 DF
 FAILS=0
 pass() { echo "  ok   — $1"; }
@@ -19,10 +19,11 @@ has()   { grep -qE -- "$2" "$1" && pass "has /$2/" || fail "lacks /$2/  ($(tr '\
 # shellcheck disable=SC2015
 hasnt() { grep -qE -- "$2" "$1" && fail "unexpectedly has /$2/" || pass "has no /$2/"; }
 
-# run_case NAME then env assignments: LINEAGE=1|0 DRYRUN=ok|fail TIMER=active|inactive ENVQUOTED=1|0
+# run_case OUT then env assignments: LINEAGE=1|0 DRYRUN=ok|fail TIMER=active|inactive ENVQUOTED=1|0 HCURL=1|0
 run_case() {
-  local out=$1; shift
-  docker run --rm -v "$REPO:/kit:ro" -e "$1" -e "$2" -e "$3" -e "$4" "$IMG" bash -c '
+  local out=$1; shift; local envs=()
+  for e in "$@"; do envs+=(-e "$e"); done
+  docker run --rm -v "$REPO:/kit:ro" "${envs[@]}" "$IMG" bash -c '
 set -u
 mkdir -p /opt/asp /etc/letsencrypt/live/portal.zone.test /etc/letsencrypt/renewal /usr/local/bin
 printf "ASP_PORTAL_HOST=portal.zone.test\nASP_GW_HOST=gw.zone.test\nASP_BUCKET=b\nASP_CUSTOMER=acme\n" >/etc/asp-terminal.env
@@ -30,6 +31,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 80 -subj "/CN=*.zone.test" -adde
   -keyout /etc/letsencrypt/live/portal.zone.test/privkey.pem -out /etc/letsencrypt/live/portal.zone.test/cert.pem >/dev/null 2>&1
 [ "$LINEAGE" = 1 ] && echo "cert_name = portal.zone.test" >/etc/letsencrypt/renewal/portal.zone.test.conf
 cp /kit/aws/scripts/cert-expiry-check.sh /opt/asp/cert-expiry-check.sh; chmod +x /opt/asp/cert-expiry-check.sh
+if [ "${HCURL:-1}" = 1 ]; then echo "CERT_HEALTHCHECK_URL='https://hc-ping.com/abc'" >/etc/asp-cert.env; else echo "CERT_HEALTHCHECK_URL=''" >/etc/asp-cert.env; fi
 if [ "$ENVQUOTED" = 1 ]; then printf "ASP_CUSTOMER='"'"'acme'"'"'\nASP_PROFILE='"'"'standard'"'"'\n" >/etc/asp-portal.env
 else printf "ASP_CUSTOMER='"'"'acme'"'"'\nASP_BRAND=Acme Terminals\n" >/etc/asp-portal.env; fi
 cat >/usr/local/bin/certbot <<C
@@ -60,6 +62,7 @@ has .h1 'PASS.*OK — [0-9]+d left'
 has .h1 'PASS.*asp-cert-check\.timer'
 has .h1 'PASS.*portal.*v2026\.09\.14-2'
 has .h1 'PASS.*asp-portal\.env'
+has .h1 'PASS.*expiry alarm pings'
 hasnt .h1 'FAIL'
 has .h1 'exit=0'
 has .h1 'calls: certbot renew --dry-run'
@@ -83,7 +86,11 @@ run_case "$PWD/.h4" LINEAGE=1 DRYRUN=ok TIMER=inactive ENVQUOTED=0
 has .h4 'FAIL.*asp-cert-check\.timer'
 has .h4 'FAIL.*asp-portal\.env.*ASP_BRAND'
 has .h4 'exit=1'
-rm -f .h1 .h2 .h3 .h4
+echo "5. expiry alarm armed with an empty ping URL → FAIL that names it MUTE and the SSM parameter (#50)"
+run_case "$PWD/.h5" LINEAGE=1 DRYRUN=ok TIMER=active ENVQUOTED=1 HCURL=0
+has .h5 'FAIL.*expiry alarm.*MUTE.*/asp/healthchecks/api-key'
+has .h5 'exit=1'
+rm -f .h1 .h2 .h3 .h4 .h5
 echo
 # shellcheck disable=SC2015
 [ "$FAILS" = 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

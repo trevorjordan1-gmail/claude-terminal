@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-09-14 — `rollout.sh cp` refreshes a control plane's scripts; the cert alarm gets its ping from SSM (#49, #50)
+
+Both found by the operator's agent rolling v2026.09.14-1 onto the operator tenant.
+
+**#49 — nothing ever refreshed `/opt/asp` on a control plane.** `cp-setup.sh`
+stages `cp-tls.sh`, `dcv-cp-install.sh` and `portal-deploy.sh` from the bucket
+once at first boot; terminals have `auto-update.sh`, the CP had no equivalent,
+and `rollout.sh scripts` only updates the bucket. So every "re-run via SSM"
+instruction since #38 — including #44 step 2 as first run — executed the
+build-day copy. New `rollout.sh cp` layer: one SSM command per tenant that
+re-fetches the CP script set (`cp-tls.sh dcv-cp-install.sh portal-deploy.sh
+cert-expiry-check.sh cp-verify.sh`, plus `tenant-custom-cp.sh` if present) from
+the bucket; a missing file fails the tenant with "run rollout.sh scripts
+first". `all` runs it after `scripts` and before `portal`, so the portal
+layer's local `portal-deploy.sh` is current by construction. Invariant written
+into build-tenant.md §7/§9/§9.5: **a CP's `/opt/asp` is a cache of the bucket
+and only `rollout.sh` refreshes it.**
+
+**#50 — the expiry alarm armed mute on every tenant.** `cp-tls.sh` could
+self-register a Healthchecks check but nothing in the build ever put the
+management key on a CP, so `/etc/asp-cert.env` held an empty URL and the
+daily check wrote to a journal nobody reads — the silent failure #38 set out
+to remove, one layer up. Now `cp-tls.sh` reads SSM SecureString
+`/asp/healthchecks/api-key` the way it reads the Cloudflare token (fetched and
+used under `set +x` — the key must not land in the SSM command log), listed
+in build-tenant.md §4 as a build input; the "armed without a ping" line moved
+from stderr to stdout as `CHECKLIST NOT DONE`, and `cp-verify.sh` reports a
+mute alarm as FAIL, so `rollout.sh verify` surfaces it. Back-fill for existing
+tenants: put the parameter, `rollout.sh cp`, re-run cp-tls.sh. No IAM change:
+the CP role already reads `parameter/asp/*`.
+
+Harnesses: `aws/tests/rollout-harness.sh` (was rollout-verify-harness; adds
+the cp layer and the `all` ordering), `aws/tests/cp-tls-harness.sh` (new,
+container: steady state makes no certbot call and the key never appears in
+the trace; no key → MUTE line; fresh tenant → one wildcard-only order),
+cp-verify harness gains the mute-alarm case.
+
 ## 2026-09-14 — `rollout.sh verify`: the control-plane field checks become one command (#27)
 
 #27's remaining items were "run these on the control plane and paste the

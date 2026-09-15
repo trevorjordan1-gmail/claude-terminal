@@ -1,6 +1,7 @@
 #!/bin/bash
 # Issue/renew Let's Encrypt certs for portal + gateway via Cloudflare DNS-01.
-# Requires SSM SecureString /asp/cloudflare/token (zone-scoped DNS-edit token).
+# Requires SSM SecureString /asp/cloudflare/token (zone-scoped DNS-edit token) and, for the
+# expiry alarm to be heard, /asp/healthchecks/api-key (Healthchecks management key, #50).
 # Re-runnable via SSM. (Client tenants on other DNS: swap the certbot plugin.)
 set -uxo pipefail
 # shellcheck source=/dev/null  # written by the platform at boot; not in the repo
@@ -100,12 +101,22 @@ chmod +x /etc/letsencrypt/renewal-hooks/deploy/asp-gateway.sh
 # construction: everything keeps working until the morning it does not. #30 was the same
 # shape on the backup side (snapshots fine, nobody told). Alert on staleness, not on error.
 HC_URL="${CERT_HEALTHCHECK_URL:-${ASP_CERT_HC_URL:-}}"
+# The Healthchecks management key arrives via SSM like the Cloudflare token — never in the
+# env file or user-data (#50: nothing in the build ever put it on a CP, so every alarm armed
+# mute). Fetched AND used under set +x: the key must not land in the SSM command log.
+set +x
+if [ -z "$HC_URL" ] && [ -z "${HEALTHCHECKS_API_KEY:-}" ]; then
+  HEALTHCHECKS_API_KEY=$(aws ssm get-parameter --region "$ASP_REGION" --name /asp/healthchecks/api-key \
+    --with-decryption --query Parameter.Value --output text 2>/dev/null) || HEALTHCHECKS_API_KEY=""
+  [ "$HEALTHCHECKS_API_KEY" = "None" ] && HEALTHCHECKS_API_KEY=""
+fi
 if [ -z "$HC_URL" ] && [ -n "${HEALTHCHECKS_API_KEY:-}" ]; then
   HC_URL=$(curl -fsS -m 15 -X POST -H "X-Api-Key: $HEALTHCHECKS_API_KEY" \
     -d "{\"name\":\"cert-${ASP_CUSTOMER:-cp}\",\"tags\":\"asp tls\",\"timeout\":86400,\"grace\":86400,\"unique\":[\"name\"]}" \
     "https://healthchecks.io/api/v3/checks/" 2>/dev/null \
     | python3 -c 'import json,sys;print(json.load(sys.stdin).get("ping_url",""))' 2>/dev/null) || HC_URL=""
 fi
+set -x
 if [ -z "$HC_URL" ] && [ -f /etc/asp-cert.env ]; then
   # shellcheck source=/dev/null  # the file this script wrote last time
   HC_URL=$(. /etc/asp-cert.env 2>/dev/null; printf '%s' "${CERT_HEALTHCHECK_URL:-}")
@@ -151,7 +162,9 @@ systemctl enable --now asp-cert-check.timer >/dev/null 2>&1
 if [ -n "$HC_URL" ]; then
   echo "cp-tls: expiry alarm armed (daily; pings Healthchecks)"
 else
-  echo "cp-tls: expiry alarm armed WITHOUT a ping — set HEALTHCHECKS_API_KEY or CERT_HEALTHCHECK_URL; it will only log locally" >&2
+  # stdout, not stderr: an SSM invocation's stderr is seen by nobody; this is a build checklist
+  # item that is not done, and cp-verify.sh reports it as FAIL until it is.
+  echo "cp-tls: CHECKLIST NOT DONE — expiry alarm is MUTE (armed, no ping URL): put SSM SecureString /asp/healthchecks/api-key (build-tenant §4), then rollout.sh cp and re-run cp-tls.sh"
 fi
 
 echo "TLS ready"
