@@ -147,14 +147,24 @@ if command -v xrandr >/dev/null 2>&1; then
     done
   fi
 fi
+# Stored layout (#43): mutter's startup never looks at the X state set above —
+# it takes a stored monitors.xml, else "linear" = every connected Xdcv output at
+# its FIRST mode = 4x800x600, on EVERY gnome-shell start. Writing the session
+# user's monitors.xml from the live RandR set (real connector names, the extra
+# outputs in <disabled>) is the prevention: proven on a real box 2026-09-15 —
+# fresh session logs corrections=0, a client resize still moves the head.
+# Synchronous (one xrandr call, ~ms); exit 0 on every path.
+[ -x /opt/asp/session-monitors-xml.sh ] && /opt/asp/session-monitors-xml.sh >/dev/null 2>&1
 # Self-heal watchdog (#21): probes the framebuffer once gnome-shell is up and
 # restarts it in place if it never painted. Backgrounded — never blocks login.
 [ -x /opt/asp/session-paint-probe.sh ] && /opt/asp/session-paint-probe.sh >/dev/null 2>&1 &
 # Layout guard (field report 2026-09-11): mutter enables all four
 # "connected" Xdcv outputs ~2 s after start and undoes the pre-mode above (and
 # the portal's Connect-time layout) → 4x800x600, then a 3200x600 head at 0 Hz
-# and the #20 stall. This keeps re-asserting the single 1920x1080 head for the
-# first minute, after gnome-shell is up. Backgrounded — never blocks login.
+# and the #20 stall. Backstop since #43 (a box whose output set the stored
+# config does not match falls through to linear): re-asserts the single
+# 1920x1080 head for the first minute after gnome-shell is up, and again on
+# every gnome-shell restart (#47). Backgrounded — never blocks login.
 [ -x /opt/asp/session-layout-guard.sh ] && /opt/asp/session-layout-guard.sh >/dev/null 2>&1 &
 exec /etc/X11/Xsession
 INIT
@@ -170,6 +180,11 @@ if aws s3 cp "s3://$ASP_BUCKET/scripts/session-layout-guard.sh" /opt/asp/session
   chmod 755 /opt/asp/session-layout-guard.sh
 else
   echo "WARN: session-layout-guard.sh not in bucket — layout guard skipped" >&2
+fi
+if aws s3 cp "s3://$ASP_BUCKET/scripts/session-monitors-xml.sh" /opt/asp/session-monitors-xml.sh; then
+  chmod 755 /opt/asp/session-monitors-xml.sh
+else
+  echo "WARN: session-monitors-xml.sh not in bucket — stored layout skipped (#43); the guard alone protects sessions" >&2
 fi
 # remove the dead-end init attempts (nothing ever executed these)
 rm -f /var/lib/dcv-session-manager-agent/init/default.sh \

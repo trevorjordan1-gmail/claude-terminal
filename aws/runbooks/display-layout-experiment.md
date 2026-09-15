@@ -4,6 +4,19 @@ Tracker: #43 (follow-up to #42, #28, #20). For an agent with SSM access to a
 **free** terminal (nobody connected, no Claude job running). ~15 minutes.
 Everything here is reversible: delete one file, restart gnome-shell.
 
+> **Result (2026-09-15, run on a real build box — details on #43): every check passed
+> and this SHIPPED.** Connector names are `VNC-output-0..3` (not `VNC-0..3`), the rate
+> is `59.963`, there is **no** `hotplug_mode_update` property, `XDG_CONFIG_DIRS` is unset
+> (glib default, so `/etc/xdg` is read), a guard-off A/B reproduced the four heads with
+> the file moved aside and one head with it present, a fresh session logged
+> `corrections=0`, and a client resize moved the head to 2672x1544 without snapping back.
+> Shipped form: `aws/scripts/session-monitors-xml.sh`, run synchronously by
+> `dcvsessioninit` right after the #20 pre-mode, writes the session user's
+> `~/.config/monitors.xml` from the live `xrandr --query` (real connector set, the extras
+> in `<disabled>`) — generated per box because the lookup key is the full output set.
+> The #42/#47 guard stays as the backstop. This file remains the re-verification
+> procedure; the XML below now carries the real names.
+
 ## Why the four heads keep coming back (mutter gnome-46, Ubuntu 24.04)
 
 Read from mutter's source, not observed — function names so it can be re-checked.
@@ -62,8 +75,8 @@ asu gdbus call --session --dest org.gnome.Mutter.DisplayConfig \
   --method org.gnome.Mutter.DisplayConfig.GetCurrentState > /var/tmp/mutter-state.txt
 ```
 
-From `xrandr-prop.txt`: the **output names** (assumed `VNC-0..3` below — use the
-real ones), each output's connection state, and whether any output carries a
+From `xrandr-prop.txt`: the **output names** (`VNC-output-0..3` on Xdcv — the XML below
+uses them; confirm on the box), each output's connection state, and whether any output carries a
 **`hotplug_mode_update`** property. If it does, mutter uses a stored config only
 at startup and never re-applies it at runtime — the best case for us.
 
@@ -84,16 +97,16 @@ sudo -u <user> tee /home/<user>/.config/monitors.xml >/dev/null <<'XML'
       <x>0</x><y>0</y><scale>1</scale><primary>yes</primary>
       <monitor>
         <monitorspec>
-          <connector>VNC-0</connector>
+          <connector>VNC-output-0</connector>
           <vendor>unknown</vendor><product>unknown</product><serial>unknown</serial>
         </monitorspec>
         <mode><width>1920</width><height>1080</height><rate>59.963</rate></mode>
       </monitor>
     </logicalmonitor>
     <disabled>
-      <monitorspec><connector>VNC-1</connector><vendor>unknown</vendor><product>unknown</product><serial>unknown</serial></monitorspec>
-      <monitorspec><connector>VNC-2</connector><vendor>unknown</vendor><product>unknown</product><serial>unknown</serial></monitorspec>
-      <monitorspec><connector>VNC-3</connector><vendor>unknown</vendor><product>unknown</product><serial>unknown</serial></monitorspec>
+      <monitorspec><connector>VNC-output-1</connector><vendor>unknown</vendor><product>unknown</product><serial>unknown</serial></monitorspec>
+      <monitorspec><connector>VNC-output-2</connector><vendor>unknown</vendor><product>unknown</product><serial>unknown</serial></monitorspec>
+      <monitorspec><connector>VNC-output-3</connector><vendor>unknown</vendor><product>unknown</product><serial>unknown</serial></monitorspec>
     </disabled>
   </configuration>
 </monitors>
@@ -160,8 +173,17 @@ sudo kill -TERM $(pgrep -u <user> -x gnome-shell)
 
 Paste: the output names and connection lines, whether `hotplug_mode_update`
 exists, the `1920x1080@rate` id, the step-4 journal lines, the step-6 result,
-and `XDG_CONFIG_DIRS`. If steps 4–6 pass, the shipped form is
-`dcv-desktop-install.sh` writing the same file to **`/etc/xdg/monitors.xml`**
-(system config; a user's own `~/.config/monitors.xml` wins only for the same
-output set), provided `XDG_CONFIG_DIRS` from step 1 contains `/etc/xdg`. The
-#42 guard stays as the backstop either way.
+and `XDG_CONFIG_DIRS`.
+
+**What shipped (steps 4–6 passed 2026-09-15):** not a fixed file under `/etc/xdg`
+but `session-monitors-xml.sh`, which `dcvsessioninit` runs synchronously after the
+#20 pre-mode: it reads the live `xrandr --query`, takes the first connected output as
+the primary at `1920x1080_60` (rate derived from the same modeline), puts every other
+connected output in `<disabled>`, and writes `~/.config/monitors.xml` atomically —
+only when the content changed, and never when the primary lacks the 1080p mode
+(mutter would reject the file whole). Per-session generation is what makes the
+connector set — the lookup key — correct on every box; a fixed four-output file would
+silently fall through to linear on a box with a different head count. `/etc/xdg` is
+proven to work too (row E) and remains an option if a system-wide file is ever wanted.
+Journal tag `asp-monitors-xml`: `wrote …` on the first session, `unchanged …` after.
+The #42/#47 guard stays as the backstop.
