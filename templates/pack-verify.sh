@@ -3,6 +3,12 @@
 #
 #   bash pack-verify.sh [envfile] [--lint]
 #
+# BOX_ROLE in the pack selects which credentials are expected: `build` (default) for
+# <code>-build01, which carries the DigitalOcean token; `builder` for a builder's own
+# terminal, where infrastructure credentials are a FAIL. AWS is demanded only when the
+# pack shows an AWS tenant is in play (TENANT_PROFILE or a key), so engagements without
+# one are unaffected.
+#
 # envfile defaults to ./.env. --lint stops after the static checks (run it right after
 # staging the scratch, BEFORE pointing Claude at SETUP). The full run probes a real WRITE
 # on every provider — read access is not evidence of write access — and cleans up every
@@ -32,15 +38,62 @@ set -a
 . "$ENVFILE"
 set +a
 
+# GITHUB_CLASSIC is REQUIRED as of 2026-09-12, not a note. It is the classic
+# read:packages PAT, and ghcr.io refuses fine-grained tokens outright — so a pack
+# without it linted clean and then failed at the first image pull. That gap put a
+# second builder's terminal on the build-on-droplet fallback with no warning.
 REQUIRED=(CLIENT_CODE CLIENT_DOMAIN BUILDER_NAME BUILDER_EMAIL
-  DO_API_KEY CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN GITHUB_ORG GITHUB_PAT
+  CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN GITHUB_ORG GITHUB_PAT GITHUB_CLASSIC
   WASABI_ACCESS_KEY WASABI_SECRET_KEY WASABI_REGION
   HEALTHCHECKS_API_KEY HEALTHCHECK_READONLY_API_KEY
   RESTIC_PASSWORD_CCT RESTIC_PASSWORD_DOCKER01)
+
+# BOX_ROLE — build|builder. A BUILD box (<code>-build01, in the operator tenant)
+# carries the infrastructure credentials: the DigitalOcean token and the AWS build
+# identity. It is what runs PLATFORM-BUILD and the customer's tenant build. A
+# BUILDER terminal carries NEITHER: builders deploy to docker01 over SSH and never
+# create or destroy infrastructure, and DCV administration is not theirs.
+# Default is `build`, so every pack written before this change keeps passing.
+BOX_ROLE="${BOX_ROLE:-build}"
+[ "$BOX_ROLE" = "build" ] && REQUIRED+=(DO_API_KEY)
+
+# AWS is required only where the engagement actually builds a customer AWS tenant —
+# Ai Build does, Ai Adopt does not, and both run their build box through this same
+# script. Gating on BOX_ROLE alone would fail every existing Ai Adopt pack, which
+# carries no AWS credentials by design. So: if the pack shows ANY sign of an AWS
+# tenant (a profile choice or a key), demand the complete set — a half-filled AWS
+# block is the dangerous state, not an empty one.
+AWS_EXPECTED=0
+if [ "$BOX_ROLE" = "build" ] && \
+   { [ -n "${TENANT_PROFILE:-}" ] || [ -n "${AWS_ACCESS_KEY_ID:-}" ] || [ -n "${AWS_ACCOUNT_ID:-}" ]; }; then
+  AWS_EXPECTED=1
+  # AWS_ACCOUNT_ID is deliberately NOT required: the full run records it from STS when
+  # empty (#48) — from the API, not transcription — and a mismatch with the keys is a FAIL.
+  REQUIRED+=(AWS_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY)
+fi
 MISS=0
+case "$BOX_ROLE" in
+  build|builder) : ;;
+  *) bad "BOX_ROLE must be build or builder" "$BOX_ROLE"; MISS=1 ;;
+esac
 for v in "${REQUIRED[@]}"; do
   [ -n "${!v:-}" ] || { bad "missing/empty: $v"; MISS=1; }
 done
+# The other half of the role split: credentials that belong only on a build box are
+# a FAIL when found on a builder terminal, not a note. Least privilege is the point —
+# a builder box is a person's daily workspace, and an infrastructure token on it is
+# reachable by everything that person runs.
+if [ "$BOX_ROLE" = "builder" ]; then
+  for v in DO_API_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+    [ -z "${!v:-}" ] || { bad "$v is set on a BUILDER terminal — infrastructure credentials belong on <code>-build01 only"; MISS=1; }
+  done
+fi
+# TENANT_PROFILE gates the customer's AWS tenant build and is a ONE-WAY door:
+# there is no un-medical path once applied (build-tenant.md §11.6).
+case "${TENANT_PROFILE:-}" in
+  ""|standard|medical) : ;;
+  *) bad "TENANT_PROFILE must be standard or medical" "${TENANT_PROFILE}"; MISS=1 ;;
+esac
 case "$GITHUB_ORG" in
   *" "*|*,*) bad "GITHUB_ORG must be the URL slug (after github.com/), not a display name" "$GITHUB_ORG"; MISS=1 ;;
 esac
@@ -67,9 +120,9 @@ esac
 for v in CLIENT_ALERT_EMAILS ADNET_ALERTS_MAILBOX; do
   [ -n "${!v:-}" ] || { bad "$v empty — alert routing has nowhere to land; fill it at the accounts pass" ""; MISS=1; }
 done
-for v in CLIENT_LOCATION CLIENT_STAFF_DOMAIN \
+for v in CLIENT_STAFF_DOMAIN \
          ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_CLIENT_SECRET ENTRA_ADMIN_DOMAIN \
-         GITHUB_CLASSIC AIOPS_UPN; do
+         AIOPS_UPN; do
   [ -n "${!v:-}" ] || echo "  (note: $v empty — the platform build will need a judgment call or fallback)"
 done
 # Zero-question builds: each of these pre-answers a question PLATFORM-BUILD otherwise has
@@ -107,18 +160,12 @@ case "${MAIL_CAPABILITY:-}" in
   ""|outbound|inbound|both|none) : ;;
   *) bad "MAIL_CAPABILITY must be outbound/inbound/both/none" "${MAIL_CAPABILITY}"; MISS=1 ;;
 esac
-# AWS (#48, account-foundations.md §2): probed only when the pack declares a key — an
-# engagement without AWS must still pass. Static half here; the STS probe is full-run.
-if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
-  [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || { bad "AWS_SECRET_ACCESS_KEY empty while AWS_ACCESS_KEY_ID is set"; MISS=1; }
-  case "${AWS_REGION:-}" in
-    "") bad "AWS_REGION empty — the build needs it (e.g. us-east-2); the pack declares AWS keys"; MISS=1 ;;
-    *) echo "${AWS_REGION}" | grep -qE '^[a-z]{2}(-[a-z]+)+-[0-9]+$' \
-         || { bad "AWS_REGION is not a region code (us-east-2 shape)" "${AWS_REGION}"; MISS=1; } ;;
-  esac
+# AWS (#48, account-foundations.md §2): the required set is enforced above whenever the pack
+# shows a tenant is in play (#54); the region's SHAPE is checked here, the STS probe is full-run.
+if [ "$AWS_EXPECTED" -eq 1 ] && [ -n "${AWS_REGION:-}" ]; then
+  echo "${AWS_REGION}" | grep -qE '^[a-z]{2}(-[a-z]+)+-[0-9]+$' \
+    || { bad "AWS_REGION is not a region code (us-east-2 shape)" "${AWS_REGION}"; MISS=1; }
 fi
-# GITHUB_CLASSIC = classic PAT, read:packages ONLY — ghcr.io refuses fine-grained PATs;
-# without it every deploy takes the build-on-droplet fallback instead of the CI image.
 [ "$MISS" -eq 0 ] && ok "pack lints clean ($ENVFILE: ${#REQUIRED[@]} names, sources cleanly)"
 if [ "$LINT_ONLY" -eq 1 ] || [ "$MISS" -eq 1 ]; then
   echo "verdict: $PASS pass · $FAIL fail (lint only)"; exit "$((FAIL>0))"
@@ -148,16 +195,20 @@ pack_record() {
   echo "  (recorded $1=$2 into $ENVFILE — from the API, not transcription)"
 }
 
-# ── DigitalOcean: tag lifecycle ─────────────────────────────────────────────
-T="pack-probe-$STAMP"
-if curl -sf -X POST -H "Authorization: Bearer $DO_API_KEY" -H "Content-Type: application/json" \
-     -d "{\"name\":\"$T\"}" https://api.digitalocean.com/v2/tags >/dev/null \
-   && curl -sf -X DELETE -H "Authorization: Bearer $DO_API_KEY" "https://api.digitalocean.com/v2/tags/$T" \
-   && [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DO_API_KEY" \
-          "https://api.digitalocean.com/v2/tags/$T")" = 404 ]; then
-  ok "DigitalOcean — tag create/delete round-trip (deletion confirmed 404)"
+# ── DigitalOcean: tag lifecycle (build boxes only) ──────────────────────────
+if [ "$BOX_ROLE" = "build" ]; then
+  T="pack-probe-$STAMP"
+  if curl -sf -X POST -H "Authorization: Bearer $DO_API_KEY" -H "Content-Type: application/json" \
+       -d "{\"name\":\"$T\"}" https://api.digitalocean.com/v2/tags >/dev/null \
+     && curl -sf -X DELETE -H "Authorization: Bearer $DO_API_KEY" "https://api.digitalocean.com/v2/tags/$T" \
+     && [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DO_API_KEY" \
+            "https://api.digitalocean.com/v2/tags/$T")" = 404 ]; then
+    ok "DigitalOcean — tag create/delete round-trip (deletion confirmed 404)"
+  else
+    bad "DigitalOcean — tag lifecycle probe"
+  fi
 else
-  bad "DigitalOcean — tag lifecycle probe"
+  echo "  (skipped DigitalOcean — BOX_ROLE=builder carries no DO token by design)"
 fi
 
 # ── Cloudflare: TXT record on the live zone ─────────────────────────────────
@@ -297,13 +348,15 @@ else
   bad "Healthchecks — read-only key was NOT refused a write (HTTP $ROC) — wrong key staged?"
 fi
 
-# ── AWS: the build identity must be an IAM user, never root (#48) ──────────
+# ── AWS: the build identity must be an IAM user, never root (#48; build boxes only, #54) ──
 # account-foundations.md §2: the pack carries one long-lived IAM build user. A pack that
 # arrives with the account ROOT user's keys (#40, hit for real) is exactly what that runbook
 # exists to prevent, and STS is the one call that tells them apart. Keys go to boto3 via the
 # environment the pack already exported — never interpolated into code.
-if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
-  skip "AWS — no AWS_ACCESS_KEY_ID in the pack (engagement without AWS: nothing to probe)"
+if [ "$BOX_ROLE" = "builder" ]; then
+  skip "AWS — BOX_ROLE=builder carries no AWS identity by design (#54)"
+elif [ "$AWS_EXPECTED" -eq 0 ]; then
+  skip "AWS — no TENANT_PROFILE or AWS key in the pack (engagement without AWS: nothing to probe)"
 else
   STS=$(uv run --quiet --with boto3 python3 - 2>>"$ERR" <<'PYEOF'
 import boto3,os

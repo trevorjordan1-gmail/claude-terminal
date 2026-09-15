@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-09-14 — pack-verify: `BOX_ROLE` splits the pack by box role; `GITHUB_CLASSIC` required; Cloudflare tokens get pinned (#54)
+
+The operator's agent's branch `aws/dcv-ai-build`, reviewed and reconciled with
+#48 (which it predated). A builder's terminal is a person's daily workspace: an
+infrastructure token on it is reachable by everything that person runs and buys
+them nothing — builders deploy to docker01 over SSH and never create or destroy
+infrastructure. So the pack now declares its box: `BOX_ROLE=build` (default —
+`<code>-build01`, carries `DO_API_KEY` and, where the pack shows an AWS tenant
+is in play via `TENANT_PROFILE` or a key, the complete AWS build identity) or
+`BOX_ROLE=builder`, which FAILs if it carries `DO_API_KEY` or AWS keys. AWS is
+demanded by evidence of a tenant, not by role alone, so every existing Ai Adopt
+pack keeps passing; a half-filled AWS block is the state that fails.
+`TENANT_PROFILE` is validated (`standard|medical`, a one-way door).
+`GITHUB_CLASSIC` moves from note to REQUIRED — ghcr.io refuses fine-grained
+PATs, so a pack without it linted clean and then put a builder's terminal on the
+build-on-droplet fallback with no warning. The `CLIENT_LOCATION` note goes
+(PLATFORM-BUILD defaults it). Reconcile decisions: the branch's own aws-CLI
+root-ARN probe is dropped for #48's (account-ID cross-check, `pack_record`,
+counted SKIP), now gated on the role — a builder pack is a SKIP by design; and
+`AWS_ACCOUNT_ID` is NOT in the required set, because #48 records it from STS
+when empty — the branch's lint would have failed the exact pack shape #48's
+self-test 2 protects. `account-foundations.md` §7 reverses the no-client-IP-
+filter guidance: pinning the Cloudflare token to the egress EIP is the standard
+(mint unpinned, pin after the apply, before the first `cp-tls.sh` re-run), with
+what it does not buy stated — one shared NAT EIP per tenant, so per-builder
+separation still comes from per-terminal tokens; Wasabi gets `aws:SourceIp`;
+GitHub cannot be pinned. `templates/test-pack-verify.sh` grows from 5 to 13
+cases (the five pack shapes the branch verified by hand, plus vocabularies).
+
 ## 2026-09-14 — `rollout.sh cp` refreshes a control plane's scripts; the cert alarm gets its ping from SSM (#49, #50)
 
 Both found by the operator's agent rolling v2026.09.14-1 onto the operator tenant.
