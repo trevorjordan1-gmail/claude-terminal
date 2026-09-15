@@ -35,8 +35,13 @@ cp /kit/aws/scripts/cert-expiry-check.sh /opt/asp/cert-expiry-check.sh; chmod +x
 if [ "${HCURL:-1}" = 1 ]; then echo "CERT_HEALTHCHECK_URL='https://hc-ping.com/abc'" >/etc/asp-cert.env; else echo "CERT_HEALTHCHECK_URL=''" >/etc/asp-cert.env; fi
 case "$ENVQUOTED" in
   1)     printf "ASP_CUSTOMER='"'"'acme'"'"'\nASP_PROFILE='"'"'standard'"'"'\n" >/etc/asp-portal.env ;;
-  shlex) # what portal-deploy.sh really writes (#51): shlex.quote leaves safe values BARE
-         printf "ASP_CUSTOMER='"'"'acme'"'"'\nASP_BRAND='"'"'Acme Terminals'"'"'\nBROKER_VERIFY_TLS=false\nENTRA_TENANT_ID=3e0d7d89-0000-4000-8000-000000000000\nSUBNET_IDS=subnet-06b,subnet-01e\nBROKER_URL=https://broker.zone.test:8443\nASP_GW_VANITY=\n" >/etc/asp-portal.env ;;
+  shlex) # what portal-deploy.sh really writes (#51): shlex.quote leaves safe values BARE, and an
+         # apostrophe arrives spliced the shlex way (quote dquote quote dquote quote) or the sq()
+         # way (quote backslash quote quote). Octal escapes (047 = apostrophe, 042 = dquote,
+         # 134 = backslash) keep the outer single-quoted container script intact.
+         printf "ASP_CUSTOMER=\047acme\047\nASP_BRAND=\047Acme Terminals\047\nBROKER_VERIFY_TLS=false\nENTRA_TENANT_ID=3e0d7d89-0000-4000-8000-000000000000\nSUBNET_IDS=subnet-06b,subnet-01e\nBROKER_URL=https://broker.zone.test:8443\nASP_GW_VANITY=\n" >/etc/asp-portal.env
+         printf "ASP_TAGLINE=\047Bob\047\042\047\042\047s Terminals\047\nASP_BRAND2=\047Bob\047\134\047\047s Terminals\047\n" >>/etc/asp-portal.env
+         bash -c "set -e; . /etc/asp-portal.env; echo sourced-tagline=[\$ASP_TAGLINE] sourced-brand2=[\$ASP_BRAND2]" ;;
   *)     printf "ASP_CUSTOMER='"'"'acme'"'"'\nASP_BRAND=Acme Terminals\nSESSION_SECRET=ab\$cd\nBROKER_URL='"'"'https://x'"'"'\n" >/etc/asp-portal.env ;;
 esac
 cat >/usr/local/bin/certbot <<C
@@ -97,7 +102,7 @@ has .h4 'FAIL.*asp-cert-check\.timer'
 has .h4 'FAIL.*asp-portal\.env.*ASP_BRAND SESSION_SECRET — '
 hasnt .h4 'FAIL.*asp-portal\.env.*BROKER_URL'
 has .h4 'exit=1'
-echo "6. the env file exactly as portal-deploy.sh writes it (shlex.quote: safe values bare) → PASS (#51)"
+echo "6. the env file exactly as portal-deploy.sh writes it (shlex.quote: safe values bare; an apostrophe spliced both ways) → PASS (#51)"
 run_case "$PWD/.h6" LINEAGE=1 DRYRUN=ok TIMER=active ENVQUOTED=shlex
 has .h6 'PASS.*asp-portal\.env'
 hasnt .h6 'FAIL.*asp-portal\.env'
