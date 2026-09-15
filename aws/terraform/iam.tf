@@ -184,10 +184,15 @@ data "aws_iam_policy_document" "desktop" {
   }
   # backup config (bucket + S3-compatible credentials + repo password), read
   # once at build by backup-arm.sh. Absent parameter = tenant has no backups.
+  # /asp/healthchecks/api-key: the tenant-wide Healthchecks management key — ONE key arms
+  # the cert alarm (cp-tls.sh, on the CP) and every terminal's backup alarm (#53).
   statement {
-    sid       = "ReadBackupConfig"
-    actions   = ["ssm:GetParameter"]
-    resources = ["arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/asp/backup/config"]
+    sid     = "ReadBackupConfig"
+    actions = ["ssm:GetParameter"]
+    resources = [
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/asp/backup/config",
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/asp/healthchecks/api-key",
+    ]
   }
   statement {
     sid     = "DecryptBackupConfig"

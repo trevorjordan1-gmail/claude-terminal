@@ -106,8 +106,9 @@ aws ssm put-parameter --name /asp/portal/config --type String --overwrite --valu
 aws ssm put-parameter --name /asp/portal/secrets --type SecureString --overwrite --value \
  '{"ENTRA_CLIENT_SECRET":"<secret>","SESSION_SECRET":"<openssl rand -hex 32>"}'
 aws ssm put-parameter --name /asp/cloudflare/token --type SecureString --overwrite --value '<cf-token>'
-# cert-expiry alarm ping (#50): the Healthchecks MANAGEMENT key; without it the daily check arms MUTE
-# and cp-verify.sh reports FAIL until it exists (back-fill: put it, then `rollout.sh cp` + re-run cp-tls.sh)
+# ONE Healthchecks MANAGEMENT key for every alarm (#50, #53): the cert-expiry check on the CP and each
+# terminal's backup check. Without it they arm MUTE and cp-verify.sh reports FAIL until it exists
+# (back-fill: put it, then `rollout.sh cp` + re-run cp-tls.sh; terminals re-arm on their next auto-update)
 aws ssm put-parameter --name /asp/healthchecks/api-key --type SecureString --overwrite --value '<healthchecks-management-key>'
 ```
 
