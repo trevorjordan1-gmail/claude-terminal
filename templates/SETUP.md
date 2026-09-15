@@ -20,8 +20,11 @@ you need is in the staged file — do not ask for keys or the client code.
    `bash ~/claude-terminal/templates/pack-verify.sh ~/Projects/.env --lint` before anything
    else. It checks the pack sources cleanly (unquoted spaces break sourcing and truncate
    values — field-hit), every expected name is present, and `GITHUB_ORG` is the URL slug,
-   not a display name. If the file is missing, stop and say so — the accounts pass
-   (onboarding stage 2) isn't done.
+   not a display name. `BOX_ROLE` in the pack says which credentials belong here: `build`
+   (the default — `<code>-build01`, carries `DO_API_KEY` and, when a tenant is in play, the
+   AWS build identity) or `builder` (a builder's own terminal: NO infrastructure tokens —
+   the lint FAILs if it finds any). If the file is missing, stop and say so — the accounts
+   pass (onboarding stage 2) isn't done.
 3. You are logged in on **adNET's Claude seat** (environment work carries no client data).
    `ENGAGEMENT=build`: at builder handoff this seat logs out and the builder signs in with
    theirs. `ENGAGEMENT=adopt` (or `BUILDER_NAME="Ai Ops"`, the recognised no-human-builder
@@ -143,7 +146,9 @@ changes shape:
 - **Register the terminal:** STATE.md's VM↔builder map gains this machine (hostname,
   builder, token names + minted date — expiry = mint + 12 months, the operator
   standard). Commit + push.
-- `pack-verify.sh` runs the same — it proves the NEW tokens, not the first terminal's.
+- `pack-verify.sh` runs the same — it proves the NEW tokens, not the first terminal's. A
+  builder's own terminal carries `BOX_ROLE=builder`: no `DO_API_KEY`, no AWS keys — those
+  stay on `<code>-build01`, and the lint FAILs a builder pack that carries them.
 - **aiops mail is per-terminal too:** the token cache never travels — run
   `scripts/aiops-mail.sh login` + `verify` on THIS machine (step 6 above, same relay).
 

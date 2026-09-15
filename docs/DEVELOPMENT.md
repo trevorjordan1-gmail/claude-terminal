@@ -132,8 +132,8 @@ why in the module header.
    `python3 templates/entra-sso/test-provision-sso.py`
    The DCV layout guard has the same kind of harness (stubbed xrandr, fake
    pgrep, captured logger — ~25 s, no X): `bash aws/tests/session-layout-guard-harness.sh`.
-   `pack-verify.sh`'s AWS probe has one too (stubbed providers, a local fake
-   STS): `bash templates/test-pack-verify.sh`.
+   `pack-verify.sh`'s AWS probe and `BOX_ROLE` split have one too (stubbed
+   providers, a local fake STS): `bash templates/test-pack-verify.sh`.
    Container harnesses (docker, image built on first run): the control-plane
    self-check `bash aws/tests/cp-verify-harness.sh`, cp-tls.sh
    `bash aws/tests/cp-tls-harness.sh`, rollout.sh's control-plane layers

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# test-pack-verify.sh — self-test for pack-verify.sh's AWS build-identity probe (#48).
+# test-pack-verify.sh — self-test for pack-verify.sh's AWS build-identity probe (#48) and
+# the BOX_ROLE pack split (#54).
 # No tenant, no network: every provider probe is starved (stubbed curl, a dead proxy
 # for boto3) and STS is a local fake answering GetCallerIdentity with the ARN each
-# case needs. Asserts only the AWS lines and the SKIP accounting.
+# case needs. Asserts the AWS lines, the role/required-set lint lines and the SKIP accounting.
 #
 #   bash templates/test-pack-verify.sh        # ~10 s, exit 0 = all pass
 set -u
@@ -58,6 +59,7 @@ CLOUDFLARE_ACCOUNT_ID=x
 CLOUDFLARE_API_TOKEN=x
 GITHUB_ORG=acme
 GITHUB_PAT=x
+GITHUB_CLASSIC=x
 WASABI_ACCESS_KEY=x
 WASABI_SECRET_KEY=x
 WASABI_REGION=us-east-1
@@ -127,7 +129,7 @@ echo "4. no AWS in the pack → counted SKIP with a reason, STS never called"
 h0=$(hits)
 pack "$T/p4" </dev/null
 run "$T/p4" "$T/o4"
-has "$T/o4" '\*\*SKIP\*\* — AWS.*AWS_ACCESS_KEY_ID'
+has "$T/o4" '\*\*SKIP\*\* — AWS.*nothing to probe'
 has "$T/o4" 'verdict: .* 1 skip'
 # shellcheck disable=SC2015
 [ "$(hits)" = "$h0" ] && pass "STS not called" || fail "STS was called $(( $(hits) - h0 )) time(s)"
@@ -144,6 +146,77 @@ run "$T/p5" "$T/o5" --lint
 has "$T/o5" '\*\*FAIL\*\* — AWS_REGION'
 # shellcheck disable=SC2015
 [ "$(hits)" = "$h0" ] && pass "STS not called under --lint" || fail "STS called under --lint"
+
+echo "6. GITHUB_CLASSIC missing → lint FAIL (ghcr.io refuses fine-grained PATs; #54)"
+pack "$T/p6" </dev/null
+sed -i '/^GITHUB_CLASSIC=/d' "$T/p6"
+run "$T/p6" "$T/o6" --lint
+has "$T/o6" '\*\*FAIL\*\* — missing/empty: GITHUB_CLASSIC'
+
+echo "7. BOX_ROLE=builder carrying the DO token → FAIL (infrastructure creds on a daily workspace; #54)"
+pack "$T/p7" <<'P'
+BOX_ROLE=builder
+P
+run "$T/p7" "$T/o7" --lint
+has "$T/o7" '\*\*FAIL\*\* — DO_API_KEY is set on a BUILDER terminal'
+
+echo "8. clean builder (no DO token, no AWS) → lints clean, DO probe skipped by role, AWS counted SKIP"
+h0=$(hits)
+pack "$T/p8" <<'P'
+BOX_ROLE=builder
+P
+sed -i '/^DO_API_KEY=/d' "$T/p8"
+run "$T/p8" "$T/o8"
+has "$T/o8" '\*\*PASS\*\* — pack lints clean'
+hasnt "$T/o8" 'FAIL\*\* — missing/empty: DO_API_KEY'
+has "$T/o8" 'skipped DigitalOcean.*builder'
+hasnt "$T/o8" 'DigitalOcean — tag lifecycle probe'
+has "$T/o8" '\*\*SKIP\*\* — AWS'
+# shellcheck disable=SC2015
+[ "$(hits)" = "$h0" ] && pass "STS not called for a builder" || fail "STS called for a builder"
+
+echo "9. builder carrying AWS keys → FAIL even though the keys are an IAM user"
+pack "$T/p9" <<'P'
+BOX_ROLE=builder
+AWS_ACCESS_KEY_ID=AKIATESTUSER
+AWS_SECRET_ACCESS_KEY=secret
+AWS_REGION=us-east-2
+P
+sed -i '/^DO_API_KEY=/d' "$T/p9"
+run "$T/p9" "$T/o9" --lint
+has "$T/o9" '\*\*FAIL\*\* — AWS_ACCESS_KEY_ID is set on a BUILDER terminal'
+
+echo "10. build box, TENANT_PROFILE set but no AWS keys → the complete AWS set is REQUIRED"
+pack "$T/p10" <<'P'
+TENANT_PROFILE=medical
+P
+run "$T/p10" "$T/o10" --lint
+has "$T/o10" '\*\*FAIL\*\* — missing/empty: AWS_ACCESS_KEY_ID'
+has "$T/o10" '\*\*FAIL\*\* — missing/empty: AWS_REGION'
+hasnt "$T/o10" 'missing/empty: AWS_ACCOUNT_ID'   # recorded from STS when empty (#48), never demanded
+
+echo "11. half-filled AWS block (account id only) → FAIL on the rest, not a silent pass"
+pack "$T/p11" <<'P'
+AWS_ACCOUNT_ID=123456789012
+P
+run "$T/p11" "$T/o11" --lint
+has "$T/o11" '\*\*FAIL\*\* — missing/empty: AWS_SECRET_ACCESS_KEY'
+has "$T/o11" '\*\*FAIL\*\* — missing/empty: AWS_REGION'
+
+echo "12. no-AWS build box (Ai Adopt shape) → lints clean; BOX_ROLE unset reads as build"
+pack "$T/p12" </dev/null
+run "$T/p12" "$T/o12" --lint
+has "$T/o12" '\*\*PASS\*\* — pack lints clean'
+hasnt "$T/o12" 'FAIL\*\* — missing/empty: AWS'
+
+echo "13. BOX_ROLE and TENANT_PROFILE outside their vocabularies → FAIL by name"
+pack "$T/p13" <<'P'
+BOX_ROLE=desktop
+TENANT_PROFILE=hipaa
+P
+run "$T/p13" "$T/o13" --lint
+has "$T/o13" '\*\*FAIL\*\* — BOX_ROLE must be build or builder'
+has "$T/o13" '\*\*FAIL\*\* — TENANT_PROFILE must be standard or medical'
 
 echo
 # shellcheck disable=SC2015
