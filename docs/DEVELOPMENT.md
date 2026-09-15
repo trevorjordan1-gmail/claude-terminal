@@ -131,7 +131,9 @@ why in the module header.
    self-test — no tenant, no network:
    `python3 templates/entra-sso/test-provision-sso.py`
    The DCV layout guard has the same kind of harness (stubbed xrandr, fake
-   pgrep, captured logger — ~25 s, no X): `bash aws/tests/session-layout-guard-harness.sh`.
+   pgrep, captured logger — ~25 s, no X): `bash aws/tests/session-layout-guard-harness.sh`;
+   the stored-layout generator too (a real Xdcv `xrandr --query` as the fixture,
+   ~2 s): `bash aws/tests/session-monitors-xml-harness.sh`.
    `pack-verify.sh`'s AWS probe and `BOX_ROLE` split have one too (stubbed
    providers, a local fake STS): `bash templates/test-pack-verify.sh`.
    Container harnesses (docker, image built on first run): the control-plane

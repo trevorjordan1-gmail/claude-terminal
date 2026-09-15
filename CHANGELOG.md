@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-09-14 — the four heads never appear: a stored monitors.xml generated per session from the live RandR set (#43)
+
+Root cause (mutter gnome-46 source, #43): `ensure_configured` picks a stored
+`monitors.xml`, else linear — it never looks at the X state — and linear enables
+every output Xdcv reports as connected (all four) at its first mode (800x600).
+So the #20 pre-mode, the `--off` collapse and the portal's Connect-time layout
+could never survive gnome-shell start, and every later shell restart replayed
+the default. The operator's agent ran the experiment runbook on a real build
+box on 2026-09-15 and every check passed: connector names are
+`VNC-output-0..3` (the runbook had guessed `VNC-0..3` — matched nothing, fixed),
+rate `59.963`, no `hotplug_mode_update` property, a guard-off A/B reproduces
+the four heads with the file aside and one head with it present, a fresh
+session logs `corrections=0`, and a client resize moves the head (2672x1544)
+without snapping back. Shipped as `aws/scripts/session-monitors-xml.sh`,
+staged from the bucket like the guard and run **synchronously** by
+`dcvsessioninit` right after the #20 pre-mode: it reads `xrandr --query`,
+takes the first connected output as the primary at `1920x1080_60` (rate
+derived from the same modeline, not transcribed), puts every other connected
+output in `<disabled>`, and writes the session user's `~/.config/monitors.xml`
+atomically — only when the content changed, never when the primary lacks the
+1080p mode (mutter rejects such a file whole), exit 0 on every path. Generated
+per session rather than shipped as a fixed file because the lookup key is the
+full output set: a box with a different head count would silently fall
+through to linear. The #42/#47 guard stays as the backstop for exactly that
+case. Journal tag `asp-monitors-xml`. New
+`aws/tests/session-monitors-xml-harness.sh` (6 cases, the real Xdcv query as
+fixture). Rolls out with `rollout.sh scripts` + a wake (#44): the new script
+reaches boxes via `desktop-setup.sh` → `dcv-desktop-install.sh`.
+
 ## 2026-09-14 — one Healthchecks key arms every alarm: backup-arm.sh reads `/asp/healthchecks/api-key`; cp-verify reports a tenant whose backup alarms are mute (#53)
 
 Follow-on from #50, found on the operator tenant: the cert alarm reads
