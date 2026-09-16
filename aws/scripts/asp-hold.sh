@@ -41,12 +41,18 @@ else:
 PY
 }
 
+release_now() { need_root "$@"; rm -f "$LEASE"; echo "hold released — normal idle policy applies"; exit 0; }
+
+# The NAME comes first. Invoked as asp-release with no arguments, the
+# "default to status" below would otherwise swallow it and just print the
+# lease — which is exactly what it did the first time it ran on a box: the
+# release path was unreachable under the name people actually type.
+case "$(basename "$0")" in
+  asp-release) release_now "$@" ;;
+esac
 case "${1:-status}" in
   status) show; exit 0 ;;
-  release) need_root "$@"; rm -f "$LEASE"; echo "hold released — normal idle policy applies"; exit 0 ;;
-esac
-case "$(basename "$0")" in
-  asp-release) need_root "$@"; rm -f "$LEASE"; echo "hold released — normal idle policy applies"; exit 0 ;;
+  release) release_now "$@" ;;
 esac
 
 DUR="$1"; WHY="${2:-}"
@@ -66,11 +72,11 @@ if [ "$SECS" -gt $(( MAX_H * 3600 )) ]; then
 fi
 
 need_root "$@"
-install -d /var/lib/asp
+install -d "$(dirname "$LEASE")"
 WHO="${SUDO_USER:-$(id -un)}"
 UNTIL=$(( $(date +%s) + SECS ))
-UNTIL="$UNTIL" WHY="$WHY" WHO="$WHO" python3 -c '
+UNTIL="$UNTIL" WHY="$WHY" WHO="$WHO" LEASE="$LEASE" python3 -c '
 import json, os
 json.dump({"until": int(os.environ["UNTIL"]), "why": os.environ["WHY"], "who": os.environ["WHO"]},
-          open("/var/lib/asp/keep-awake.json", "w"))'
+          open(os.environ["LEASE"], "w"))'
 show
