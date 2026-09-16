@@ -210,7 +210,12 @@ def decide(p: dict, st: dict, cfg: dict, now: float) -> tuple[list[str], list[st
         holds.append(f"hold lease: {why} ({(hold_until - now) / 3600:.1f}h left)")
 
     if int(p.get("probe_version", 1) or 1) >= 2:
-        busy = int(p.get("claude_busy", 0) or 0)
+        # "unknown" = a live session publishing no status: every headless run
+        # (claude -p, the SDK, plugin observers). Only an interactive REPL
+        # writes `status`, so counting these as idle hibernated a box with a
+        # real agent run on it. They are working candidates, held to the same
+        # transcript-freshness test as a busy one.
+        busy = int(p.get("claude_busy", 0) or 0) + int(p.get("claude_unknown", 0) or 0)
         busy_age = int(p.get("busy_entry_age_s", -1))
         if busy > 0:
             if 0 <= busy_age <= int(cfg["busy_entry_max_age_s"]):

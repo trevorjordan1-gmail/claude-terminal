@@ -38,7 +38,8 @@ def probe(**kw):
     """A v2 probe reading: quiet box, nothing happening, unless overridden."""
     base = {"conns": 0, "claude_procs": 0, "claude_cpu": 0, "load1": "0.02",
             "uptime": 100_000, "apt": 0, "probe_version": 2,
-            "claude_busy": 0, "claude_idle": 0, "busy_entry_age_s": -1, "busy_name": "",
+            "claude_busy": 0, "claude_unknown": 0, "claude_idle": 0,
+            "busy_entry_age_s": -1, "busy_name": "",
             "newest_entry_age_s": -1, "last_conn_age_s": -1,
             "hold_until": 0, "hold_why": ""}
     base.update(kw)
@@ -66,6 +67,18 @@ CASES = [
     ("the holding session is NAMED in the hold reason",
      probe(claude_busy=1, busy_entry_age_s=45, busy_name="project-one-c7 (interactive/cli)",
            last_conn_age_s=3 * HOUR), {}, True, "project-one-c7"),
+
+    # measured on a terminal 2026-09-16: `claude -p` writes a session file with
+    # NO status field, so counting status-less sessions as idle would have
+    # hibernated a box with a live agent run on it — the monitor case
+    ("headless run (claude -p / SDK): no status at all, fresh transcript, HOLDS",
+     probe(claude_unknown=1, busy_entry_age_s=12,
+           busy_name="project-two-c2 (interactive/sdk-cli, no status)",
+           last_conn_age_s=11 * HOUR), {}, True, "sdk-cli"),
+
+    ("abandoned headless session: no status, stale transcript, does NOT hold",
+     probe(claude_unknown=1, busy_entry_age_s=4 * HOUR, last_conn_age_s=11 * HOUR),
+     {}, False, "not counted"),
 
     ("long tool call: busy, transcript 20m old, still holds",
      probe(claude_busy=1, busy_entry_age_s=1200, last_conn_age_s=3 * HOUR), {}, True, "claude busy"),

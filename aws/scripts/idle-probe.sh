@@ -19,6 +19,14 @@
 #                    means "nobody has touched this for an hour".
 #   claude_busy      sessions Claude itself reports as busy, from its
 #                    first-party ~/.claude/sessions/<pid>.json status file
+#   claude_unknown   live sessions that publish NO status at all — every
+#                    headless run does this (`claude -p`, the SDK, plugin
+#                    observers: entrypoint "sdk-cli"). Only an interactive
+#                    REPL writes `status`. Counting these as idle hibernated a
+#                    box with a REAL agent run on it, measured on a terminal
+#                    2026-09-16, so unknown means "assume working" — still
+#                    gated on transcript freshness, so an abandoned one cannot
+#                    pin the box.
 #   busy_entry_age_s how long since a BUSY session last wrote a transcript
 #                    entry — a real agent run keeps writing; a wedged one
 #                    stops. Two agreeing signals, so neither alone can pin
@@ -73,7 +81,7 @@ now = time.time()
 # GB of pointless I/O per box per day.
 TAIL_BYTES = 128 * 1024     # last 128 KB of a transcript: hundreds of entries
 LOG_SCAN_BYTES = 4 * 1024 * 1024   # per DCV log file, newest first
-busy = idle = 0
+busy = idle = unknown = 0
 busy_name = ""            # which session is holding the box, for the log line
 busy_entry_age = None     # youngest transcript entry across BUSY sessions
 newest_entry_age = None   # youngest across all live sessions (corroboration)
@@ -147,14 +155,23 @@ for sess in glob.glob("/home/*/.claude/sessions/*.json"):
     age = last_entry_age(home, d.get("sessionId", ""))
     if age is not None and (newest_entry_age is None or age < newest_entry_age):
         newest_entry_age = age
-    if d.get("status") == "busy":
-        busy += 1
+    status = d.get("status")
+    # A headless session (claude -p, SDK, plugin observer) publishes no status
+    # field at all — treat that as "working unless the transcript says
+    # otherwise", never as idle. Only an explicit "idle" is proof of idleness.
+    if status == "busy" or status is None:
+        if status is None:
+            unknown += 1
+        else:
+            busy += 1
         if age is not None and (busy_entry_age is None or age < busy_entry_age):
             busy_entry_age = age
             # name the holder: if something unexpected ever pins a box awake
             # (a plugin's background session, a stuck agent), the watchdog log
             # should say WHICH one rather than just "claude busy".
-            busy_name = f"{d.get('name') or '?'} ({d.get('kind') or '?'}/{d.get('entrypoint') or '?'})"
+            busy_name = (f"{d.get('name') or '?'} "
+                         f"({d.get('kind') or '?'}/{d.get('entrypoint') or '?'}"
+                         f"{'' if status else ', no status'})")
     else:
         idle += 1
 
@@ -200,6 +217,7 @@ except Exception:
 
 print(json.dumps({
     "claude_busy": busy,
+    "claude_unknown": unknown,
     "claude_idle": idle,
     "busy_entry_age_s": -1 if busy_entry_age is None else busy_entry_age,
     "busy_name": busy_name,
@@ -213,7 +231,7 @@ PY
 # a python failure must never make the box look busy — fail to "nothing known"
 case "$CLAUDE" in
   \{*\}) : ;;
-  *) CLAUDE='{"claude_busy":0,"claude_idle":0,"busy_entry_age_s":-1,"newest_entry_age_s":-1,"last_conn_age_s":-1,"hold_until":0,"hold_why":"probe-error"}' ;;
+  *) CLAUDE='{"claude_busy":0,"claude_unknown":0,"claude_idle":0,"busy_entry_age_s":-1,"newest_entry_age_s":-1,"last_conn_age_s":-1,"hold_until":0,"hold_why":"probe-error"}' ;;
 esac
 
 echo "{\"conns\":$CONNS,\"claude_procs\":$NPROC,\"claude_cpu\":$CPU,\"load1\":$LOAD1,\"uptime\":$UP,\"apt\":$APT,\"probe_version\":2,${CLAUDE#\{}"
