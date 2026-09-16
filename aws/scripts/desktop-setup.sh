@@ -352,6 +352,19 @@ fi
 # A deferred release now retries on the next ~2h awake tick, and
 # auto-update.sh independently refuses to run just after a resume.
 aws s3 cp "s3://$ASP_BUCKET/scripts/auto-update.sh" /opt/asp/auto-update.sh 2>/dev/null && chmod +x /opt/asp/auto-update.sh
+
+# asp-hold (#55/#56): the sanctioned way to keep a box awake for work the
+# watchdog cannot see — a long Claude monitor, an overnight job. It goes on
+# PATH, not just /opt/asp, because a person types it; asp-release is the same
+# script under a second name. Without this the only opt-out is the
+# IdlePolicy=keep-awake tag, which never expires — the failure mode the
+# TTL'd lease exists to replace.
+if aws s3 cp "s3://$ASP_BUCKET/scripts/asp-hold" /usr/local/bin/asp-hold 2>/dev/null; then
+  chmod 0755 /usr/local/bin/asp-hold
+  ln -sf /usr/local/bin/asp-hold /usr/local/bin/asp-release
+else
+  echo "WARN: asp-hold not in bucket — no way to hold a box awake for a long monitor (#56)" >&2
+fi
 cat > /etc/systemd/system/asp-auto-update.service <<'UNIT'
 [Unit]
 Description=ASP terminal self-update

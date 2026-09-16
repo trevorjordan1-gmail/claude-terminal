@@ -665,6 +665,14 @@ wrap up and start fresh from the hand-off."
 # Esc or "← Back" walks back one screen in every submenu; q quits.
 # direct shortcut: cc <folder> [claude args…] skips the menu entirely.
 TARGET=""
+# An informational flag is a question for claude, not a request to pick a
+# workspace: `cc --version` used to walk the whole menu first and only answer
+# after a workspace was chosen (#27 item 5). Session flags are NOT in this
+# list on purpose — `cc --resume` with no folder still needs to know which
+# workspace, which is exactly what the menu is for.
+case "${1:-}" in
+  --version|-v|--help|-h) exec claude "$@" ;;
+esac
 if [ $# -ge 1 ] && [ -d "$PROJECTS/$1" ]; then
   TARGET="$PROJECTS/$1"; shift
 elif [ $# -ge 1 ] && [ "${1:0:1}" != "-" ]; then
