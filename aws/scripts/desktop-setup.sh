@@ -168,11 +168,22 @@ seed_chrome_first_run /etc/skel ""   # collab guests added later inherit it
 sed 's|Exec=/usr/bin/google-chrome-stable|Exec=/usr/bin/google-chrome-stable --disable-smooth-scrolling --force-prefers-reduced-motion --renderer-process-limit=2 --password-store=basic|g' \
   /usr/share/applications/google-chrome.desktop > /usr/local/share/applications/google-chrome.desktop
 
-# warm start: the browser's launch burst happens during session creation,
-# before the user has even connected — clicking the dock icon is instant.
-# --no-startup-window, not --start-minimized: GNOME ignores minimize hints,
-# so the warm window sat in the user's face on every fresh session (TJ
-# 2026-08-31). No window at all is the point — the process still warms.
+# warm start, with its limits measured (#27 item 3, on a real desktop
+# 2026-09-16): --no-startup-window, not --start-minimized, because GNOME
+# ignores minimize hints and the warm window sat in the user's face on every
+# fresh session (TJ 2026-08-31).
+#
+# What this does NOT do, despite what this comment used to claim: keep a
+# process resident. Chrome launched with no window exits within seconds —
+# 0 processes at t+20/40/60/90s into a fresh session, 0 after a manual launch,
+# and still 0 with BackgroundModeEnabled=true, so background mode is not the
+# missing knob (it needs a background app to hold the process open).
+#
+# What survives is the page cache: the exec pages in the chrome binary and its
+# libraries, so the first real click skips the disk. That is a smaller win than
+# a resident process, and it is the honest reason to keep this entry. If
+# someone later wants a genuinely warm renderer, it needs a window somewhere
+# the user cannot see, not a flag.
 cat > /etc/xdg/autostart/cct-chrome-warm.desktop <<'DESKTOP'
 [Desktop Entry]
 Type=Application
