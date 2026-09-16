@@ -150,14 +150,24 @@ def paused_desktops() -> list[dict]:
 
 
 def probe(instance_id: str) -> dict | None:
-    cmd = ssm.send_command(
-        InstanceIds=[instance_id],
-        DocumentName="AWS-RunShellScript",
-        Parameters={"commands": [
-            f"aws s3 cp s3://{BUCKET}/scripts/idle-probe.sh /opt/asp/idle-probe.sh --quiet"
-            " && bash /opt/asp/idle-probe.sh"
-        ]},
-    )["Command"]["CommandId"]
+    try:
+        cmd = ssm.send_command(
+            InstanceIds=[instance_id],
+            DocumentName="AWS-RunShellScript",
+            Parameters={"commands": [
+                f"aws s3 cp s3://{BUCKET}/scripts/idle-probe.sh /opt/asp/idle-probe.sh --quiet"
+                " && bash /opt/asp/idle-probe.sh"
+            ]},
+        )["Command"]["CommandId"]
+    except Exception as e:  # noqa: BLE001
+        # A box that is EC2-"running" but whose SSM agent has not registered yet
+        # — every resume from hibernate spends minutes in that state — answers
+        # SendCommand with InvalidInstanceId. Unhandled, that exception left
+        # main() and aborted the whole cycle, so every box after it in the list
+        # went unexamined until the next tick (found by the #55 dry run, where a
+        # waking build box killed the run right after two verdicts).
+        log(f"{instance_id}: probe could not be sent ({type(e).__name__}) — skipping this round")
+        return None
     for _ in range(12):
         time.sleep(5)
         try:

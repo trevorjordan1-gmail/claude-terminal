@@ -64,9 +64,10 @@ APT=$(flock -n /var/lib/dpkg/lock-frontend -c true 2>/dev/null && echo 0 || echo
 # One python pass: session status files across every user, their transcripts,
 # the DCV connect log, and the hold lease.
 CLAUDE=$(CONNS="$CONNS" python3 <<'PY'
-import glob, json, os, re, time
+import calendar, glob, json, os, re, time
 
 now = time.time()
+TAIL_LINES = 200   # enough to skip trailing summary/snapshot records
 busy = idle = 0
 busy_entry_age = None     # youngest transcript entry across BUSY sessions
 newest_entry_age = None   # youngest across all live sessions (corroboration)
@@ -83,26 +84,38 @@ def proc_alive(pid, proc_start):
 
 
 def last_entry_age(home, session_id):
-    """Seconds since the last ENTRY inside the transcript. NOT the file mtime:
-    an idle REPL rewrites the file without adding entries (#55)."""
+    """Seconds since the newest ENTRY inside the transcript. NOT the file mtime:
+    an idle REPL rewrites the file without adding entries (#55).
+
+    Scans the TAIL, not just the final line: the last record is often a summary
+    or snapshot with no `timestamp` at all, and reading only that one reported
+    "no transcript" for a session that was working (caught in test — it would
+    have refused to hold a live agent run)."""
     for path in glob.glob(f"{home}/.claude/projects/*/{session_id}.jsonl"):
-        last = None
         try:
             with open(path, "rb") as fh:
-                for line in fh:
-                    if line.strip():
-                        last = line
+                tail = fh.readlines()[-TAIL_LINES:]
         except OSError:
             continue
-        if not last:
-            continue
-        try:
-            ts = json.loads(last).get("timestamp", "")
-            # stored as UTC ISO-8601 with a trailing Z
-            t = time.mktime(time.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
-            return max(0, int(now - t))
-        except Exception:
-            continue
+        newest = None
+        for line in reversed(tail):
+            if not line.strip():
+                continue
+            try:
+                ts = json.loads(line).get("timestamp", "")
+                # Stored as UTC ISO-8601 with a trailing Z, so convert with
+                # timegm. NOT mktime()-time.timezone: time.timezone is the
+                # STANDARD offset, so under DST that reads exactly one hour
+                # stale — caught in test, where a session working right now
+                # reported its entry as 60m old and would have been hibernated
+                # mid-run.
+                t = calendar.timegm(time.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S"))
+            except Exception:
+                continue
+            if newest is None or t > newest:
+                newest = t
+        if newest is not None:
+            return max(0, int(now - newest))
     return None
 
 
