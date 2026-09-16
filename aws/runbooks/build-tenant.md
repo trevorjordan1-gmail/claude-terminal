@@ -76,13 +76,42 @@ Tenant values never live in the repo: they go in a git-ignored `terraform/backen
 > (`account-foundations.md` §6.2). After it exists, run the Conditional Access MFA check
 > (§6.3 there) for its app ID.
 
+**The four portal groups — use the provisioner, not `az`.** This box has no `az` (see the
+note above), the names below are what every real tenant runs, and an agent can do the whole
+step from the repo:
+
 ```bash
-# 3 groups; record the object IDs
-az ad group create --display-name ASP-Desktop-Users --mail-nickname asp-desktop-users
-az ad group create --display-name ASP-Viewers       --mail-nickname asp-viewers
-az ad group create --display-name ASP-Admins        --mail-nickname asp-admins
-az ad group member add --group <desktop-users-id> --member-id <user-object-id>   # per desktop owner
+python3 templates/entra-sso/provision-terminal-groups.py --tenant <tenant-guid>          # dry run
+python3 templates/entra-sso/provision-terminal-groups.py --tenant <tenant-guid> \
+    --admin <you@client> --user <desktop-owner@client> --app-id <terminals-appId> --apply
+```
+
+It is idempotent (re-run to adopt what exists), creates ASSIGNED SECURITY groups —
+`Ai_Terminals_Admins`, `Ai_Terminals_Users`, `Ai_Terminals_Viewers`, `Ai_Build_Engineers` —
+sets `groupMembershipClaims` on the registration, and prints the object IDs for §4.
+
+**`Ai_Terminals_Admins` is a real capability**: a member sees every active session in
+"Sessions you can join" and joining self-grants CONTROL (keyboard, mouse, clipboard both
+ways, file transfer), with no consent prompt and no notice to the session owner, on
+unattended sessions included. Put people in it deliberately — and put at least one person in
+it, or nobody can administer the portal.
+
+**Group membership is read at sign-in** and cached in the portal session cookie for 8 hours:
+anyone already signed in must sign out and back in before a change takes effect.
+
+<details><summary>By hand with <code>az</code>, if you are on a box that has it</summary>
+
+```bash
+# 4 groups; record the object IDs. Security, assigned — NOT M365, NOT dynamic.
+az ad group create --display-name Ai_Terminals_Admins   --mail-nickname ai-terminals-admins
+az ad group create --display-name Ai_Terminals_Users    --mail-nickname ai-terminals-users
+az ad group create --display-name Ai_Terminals_Viewers  --mail-nickname ai-terminals-viewers
+az ad group create --display-name Ai_Build_Engineers    --mail-nickname ai-build-engineers
+az ad group member add --group <users-id>  --member-id <user-object-id>    # per desktop owner
 az ad group member add --group <admins-id> --member-id <admin-user-object-id>
+```
+
+</details>
 
 # app registration (web, auth-code flow)
 APPID=$(az ad app create --display-name "<code>-terminals" --sign-in-audience AzureADMyOrg \
@@ -102,7 +131,7 @@ SECRET=$(az ad app credential reset --id $APPID --years 2 --query password -o ts
 
 ```bash
 aws ssm put-parameter --name /asp/portal/config --type String --overwrite --value \
- '{"ENTRA_TENANT_ID":"<tenant-guid>","ENTRA_CLIENT_ID":"<appid>","BROKER_URL":"https://localhost:8446","BROKER_VERIFY_TLS":"false","GROUP_DESKTOP_USERS":"<id>","GROUP_VIEWERS":"<id>","GROUP_ADMINS":"<id>"}'
+ '{"ENTRA_TENANT_ID":"<tenant-guid>","ENTRA_CLIENT_ID":"<appid>","BROKER_URL":"https://localhost:8446","BROKER_VERIFY_TLS":"false","GROUP_DESKTOP_USERS":"<id>","GROUP_VIEWERS":"<id>","GROUP_ADMINS":"<id>","GROUP_BUILD_ENGINEERS":"<id>"}'
 aws ssm put-parameter --name /asp/portal/secrets --type SecureString --overwrite --value \
  '{"ENTRA_CLIENT_SECRET":"<secret>","SESSION_SECRET":"<openssl rand -hex 32>"}'
 aws ssm put-parameter --name /asp/cloudflare/token --type SecureString --overwrite --value '<cf-token>'
