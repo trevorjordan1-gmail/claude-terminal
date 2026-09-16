@@ -35,6 +35,11 @@ _jinja = Environment(
     autoescape=select_autoescape(["html"]),
 )
 _jinja.globals["brand"] = config.BRAND
+# Every page footers the release it is running. /healthz already carried this,
+# but that is a thing you have to know to go and ask for — when someone reports
+# "the portal is doing X", the first question is always which build they are
+# looking at, and now the answer is on the screen they are looking at.
+_jinja.globals["version"] = config.VERSION
 
 # In-memory share grants per DCV session: {session_id: {guest_local_user: level}}
 # PoC scope: single-process portal; move to a table when the portal scales out.
