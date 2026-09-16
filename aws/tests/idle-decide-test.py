@@ -102,6 +102,11 @@ CASES = [
     ("build running: load holds",
      probe(load1="2.40", last_conn_age_s=4 * HOUR), {}, True, "system load"),
 
+    # the first live cycle held a terminal awake on load 0.26 from nothing but
+    # MCP servers and the probe itself, with every other signal saying idle
+    ("idle-box noise (load 0.26 from MCP servers) does NOT hold",
+     probe(load1="0.26", claude_idle=2, last_conn_age_s=20 * HOUR), {}, False, None),
+
     # the safety net
     ("IMPLAUSIBLE: 13h held, no viewer 13h, busy claims work -> hibernate anyway",
      probe(claude_busy=1, busy_entry_age_s=60, last_conn_age_s=13 * HOUR),

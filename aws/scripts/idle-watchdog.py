@@ -63,7 +63,14 @@ DEFAULTS = {
     "enabled": True,
     "idle_minutes": 30,
     "claude_active_ticks": 300,  # 3 CPU-sec per check window
-    "load_active": 0.25,
+    # 1-min load that counts as "something substantial is running" (a build, a
+    # test run) on a box with no viewer. NOT 0.25: on the standard 2-vCPU
+    # m5a.large that is 12% of one core, which an idle box reaches on its own —
+    # measured 0.26-0.56 from nothing but Claude's MCP servers, the plugin
+    # observers and this probe. The first live cycle of #55 held a terminal
+    # awake on exactly that, with every other signal correctly saying idle.
+    # Real work on 2 vCPUs drives load past 1.0; idle noise never does.
+    "load_active": 1.0,
     "min_uptime_secs": 900,
     # No viewer for this long => hibernate. 60 min is not a guess: it is DCV's
     # own client idle-timeout, so a connection cannot outlive a human by more
