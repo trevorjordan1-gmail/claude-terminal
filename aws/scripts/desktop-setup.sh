@@ -359,11 +359,14 @@ aws s3 cp "s3://$ASP_BUCKET/scripts/auto-update.sh" /opt/asp/auto-update.sh 2>/d
 # script under a second name. Without this the only opt-out is the
 # IdlePolicy=keep-awake tag, which never expires — the failure mode the
 # TTL'd lease exists to replace.
-if aws s3 cp "s3://$ASP_BUCKET/scripts/asp-hold" /usr/local/bin/asp-hold 2>/dev/null; then
+# Named asp-hold.sh in the repo, installed as asp-hold: rollout.sh syncs only
+# *.sh and *.py to the bucket, so an extensionless name never ships (caught
+# before it reached a box — the bucket listing simply had no asp-hold in it).
+if aws s3 cp "s3://$ASP_BUCKET/scripts/asp-hold.sh" /usr/local/bin/asp-hold 2>/dev/null; then
   chmod 0755 /usr/local/bin/asp-hold
   ln -sf /usr/local/bin/asp-hold /usr/local/bin/asp-release
 else
-  echo "WARN: asp-hold not in bucket — no way to hold a box awake for a long monitor (#56)" >&2
+  echo "WARN: asp-hold.sh not in bucket — no way to hold a box awake for a long monitor (#56)" >&2
 fi
 cat > /etc/systemd/system/asp-auto-update.service <<'UNIT'
 [Unit]
