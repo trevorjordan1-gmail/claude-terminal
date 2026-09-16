@@ -67,10 +67,28 @@ CLAUDE=$(CONNS="$CONNS" python3 <<'PY'
 import calendar, glob, json, os, re, time
 
 now = time.time()
-TAIL_LINES = 200   # enough to skip trailing summary/snapshot records
+# This runs every 5 minutes on every box, for ever, so every read is bounded.
+# Measured on a real terminal: transcripts reach 7.5 MB (31 MB per user) and
+# the DCV logs 15 MB across 11 rotations — reading either in full was several
+# GB of pointless I/O per box per day.
+TAIL_BYTES = 128 * 1024     # last 128 KB of a transcript: hundreds of entries
+LOG_SCAN_BYTES = 4 * 1024 * 1024   # per DCV log file, newest first
 busy = idle = 0
+busy_name = ""            # which session is holding the box, for the log line
 busy_entry_age = None     # youngest transcript entry across BUSY sessions
 newest_entry_age = None   # youngest across all live sessions (corroboration)
+
+
+def tail_lines(path, nbytes):
+    """Last nbytes of a file, as whole lines (a truncated first line dropped)."""
+    with open(path, "rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        size = fh.tell()
+        start = max(0, size - nbytes)
+        fh.seek(start)
+        data = fh.read()
+    lines = data.split(b"\n")
+    return lines[1:] if start > 0 else lines
 
 
 def proc_alive(pid, proc_start):
@@ -93,8 +111,7 @@ def last_entry_age(home, session_id):
     have refused to hold a live agent run)."""
     for path in glob.glob(f"{home}/.claude/projects/*/{session_id}.jsonl"):
         try:
-            with open(path, "rb") as fh:
-                tail = fh.readlines()[-TAIL_LINES:]
+            tail = tail_lines(path, TAIL_BYTES)
         except OSError:
             continue
         newest = None
@@ -134,6 +151,10 @@ for sess in glob.glob("/home/*/.claude/sessions/*.json"):
         busy += 1
         if age is not None and (busy_entry_age is None or age < busy_entry_age):
             busy_entry_age = age
+            # name the holder: if something unexpected ever pins a box awake
+            # (a plugin's background session, a stuck agent), the watchdog log
+            # should say WHICH one rather than just "claude busy".
+            busy_name = f"{d.get('name') or '?'} ({d.get('kind') or '?'}/{d.get('entrypoint') or '?'})"
     else:
         idle += 1
 
@@ -145,18 +166,26 @@ if int(os.environ.get("CONNS", "0")) > 0:
     last_conn_age = 0
 else:
     newest = None
-    pat = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ .*Client \d+ \(user: [^)]+\) connected")
-    for log in glob.glob("/var/log/dcv/server.log*"):
+    pat = re.compile(rb"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ .*Client \d+ \(user: [^)]+\) connected")
+    # Newest file first, scanning its tail backwards, and stop at the first
+    # hit: the most recent "connected" line lives at the end of the newest log
+    # that has one. Reading all 11 rotations in full every 5 minutes was ~4 GB
+    # of I/O per box per day for a value that changes only when someone
+    # connects.
+    logs = sorted(glob.glob("/var/log/dcv/server.log*"),
+                  key=lambda f: os.path.getmtime(f) if os.path.exists(f) else 0,
+                  reverse=True)
+    for log in logs:
         try:
-            with open(log, "r", errors="replace") as fh:
-                for line in fh:
-                    m = pat.match(line)
-                    if m:
-                        t = time.mktime(time.strptime(m.group(1), "%Y-%m-%d %H:%M:%S"))
-                        if newest is None or t > newest:
-                            newest = t
+            for line in reversed(tail_lines(log, LOG_SCAN_BYTES)):
+                m = pat.match(line)
+                if m:
+                    newest = time.mktime(time.strptime(m.group(1).decode(), "%Y-%m-%d %H:%M:%S"))
+                    break
         except OSError:
             continue
+        if newest is not None:
+            break
     if newest is not None:
         last_conn_age = max(0, int(now - newest))
 
@@ -173,6 +202,7 @@ print(json.dumps({
     "claude_busy": busy,
     "claude_idle": idle,
     "busy_entry_age_s": -1 if busy_entry_age is None else busy_entry_age,
+    "busy_name": busy_name,
     "newest_entry_age_s": -1 if newest_entry_age is None else newest_entry_age,
     "last_conn_age_s": last_conn_age,
     "hold_until": hold_until,

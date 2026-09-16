@@ -38,7 +38,7 @@ def probe(**kw):
     """A v2 probe reading: quiet box, nothing happening, unless overridden."""
     base = {"conns": 0, "claude_procs": 0, "claude_cpu": 0, "load1": "0.02",
             "uptime": 100_000, "apt": 0, "probe_version": 2,
-            "claude_busy": 0, "claude_idle": 0, "busy_entry_age_s": -1,
+            "claude_busy": 0, "claude_idle": 0, "busy_entry_age_s": -1, "busy_name": "",
             "newest_entry_age_s": -1, "last_conn_age_s": -1,
             "hold_until": 0, "hold_why": ""}
     base.update(kw)
@@ -62,6 +62,10 @@ CASES = [
 
     ("genuine agent run, no viewer: BUSY + fresh transcript holds",
      probe(claude_busy=1, busy_entry_age_s=45, last_conn_age_s=3 * HOUR), {}, True, "claude busy"),
+
+    ("the holding session is NAMED in the hold reason",
+     probe(claude_busy=1, busy_entry_age_s=45, busy_name="project-one-c7 (interactive/cli)",
+           last_conn_age_s=3 * HOUR), {}, True, "project-one-c7"),
 
     ("long tool call: busy, transcript 20m old, still holds",
      probe(claude_busy=1, busy_entry_age_s=1200, last_conn_age_s=3 * HOUR), {}, True, "claude busy"),

@@ -70,9 +70,12 @@ DEFAULTS = {
     # than an hour (observed firing 24 times across two boxes).
     "no_conn_minutes": 60,
     # A BUSY session only counts as work while its transcript keeps moving.
-    # Entries flush at turn boundaries, so allow a generous lag — this must
-    # never cut off a genuine long tool call.
-    "busy_entry_max_age_s": 1800,
+    # Entries flush at turn boundaries, so the gap equals the length of the
+    # single tool call in flight: an hour is deliberately generous, because
+    # being wrong here hibernates a box mid-run, while being slow here only
+    # delays a wedged session's box by an hour (and the implausibility net
+    # below catches it regardless).
+    "busy_entry_max_age_s": 3600,
     # Safety net: held awake this long with NO viewer connection in the window
     # means the activity signal is wrong (today's CPU measure was). Humans do
     # not work for 12 hours without ever connecting. An explicit lease still
@@ -211,7 +214,11 @@ def decide(p: dict, st: dict, cfg: dict, now: float) -> tuple[list[str], list[st
         busy_age = int(p.get("busy_entry_age_s", -1))
         if busy > 0:
             if 0 <= busy_age <= int(cfg["busy_entry_max_age_s"]):
-                holds.append(f"claude busy ({busy}), transcript {busy_age // 60}m old")
+                # name the holder: an unexpected one (a plugin's background
+                # session, a stuck agent) must be visible in the log, not just
+                # "claude busy"
+                who = p.get("busy_name") or f"{busy} session(s)"
+                holds.append(f"claude busy: {who}, transcript {busy_age // 60}m old")
             else:
                 # busy but the transcript stopped moving: a wedged session, or
                 # one whose transcript we cannot find. Never a reason to hold.
