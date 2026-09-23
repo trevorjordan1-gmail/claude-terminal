@@ -92,6 +92,11 @@ resource "aws_instance" "nat" {
   vpc_security_group_ids = [aws_security_group.nat.id]
   source_dest_check      = false
   tags                   = { Name = "asp-nat", Role = "nat" }
+
+  # Same as the control plane: a newer fck-nat AMI must not force a rebuild.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }
 
 # The tenant's egress identity. Every terminal in the private subnets leaves
