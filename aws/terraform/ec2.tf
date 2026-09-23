@@ -91,10 +91,11 @@ resource "aws_launch_template" "desktop" {
       volume_type           = "gp3"
       encrypted             = true # required for hibernation
       delete_on_termination = true
-      # resume-from-Pause reads the whole RAM image through this volume —
-      # baseline 125 MB/s makes heavy resumes take 4+ min; 250 MB/s
-      # (~+$5/mo) roughly halves that, and burst bandwidth covers it
-      throughput = 250
+      # Baseline 125 MB/s. 250 MB/s roughly halves heavy resume-from-Pause
+      # times but costs $5/volume/month even while hibernated — on a mostly
+      # idle fleet that is more than the terminal's own compute (see
+      # runbooks/budgets.md). Raise per tenant if resumes feel too slow.
+      throughput = 125
     }
   }
   # user_data + tags are supplied per-launch by the portal
