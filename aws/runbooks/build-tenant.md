@@ -93,8 +93,12 @@ sets `groupMembershipClaims` on the registration, and prints the object IDs for 
 **`Ai_Terminals_Admins` is a real capability**: a member sees every active session in
 "Sessions you can join" and joining self-grants CONTROL (keyboard, mouse, clipboard both
 ways, file transfer), with no consent prompt and no notice to the session owner, on
-unattended sessions included. Put people in it deliberately — and put at least one person in
-it, or nobody can administer the portal.
+unattended sessions included. Since #58 an admin can also **Connect as owner** to a Running
+terminal that has no live session at all: that starts the owner's session and connects as the
+owner's local user — their desktop, unattended. The button confirms what it does and every
+such connect (and every admin Join) is written to the portal's journal as an `AUDIT` line
+(`journalctl -u asp-portal | grep AUDIT`). Put people in the group deliberately — and put at
+least one person in it, or nobody can administer the portal.
 
 **Group membership is read at sign-in** and cached in the portal session cookie for 8 hours:
 anyone already signed in must sign out and back in before a change takes effect.

@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-09-23 — admins can reach an idle terminal ("Connect as owner", audited); Join gates on readiness; removing a terminal leaves no ghost session (#58)
+
+Field report from a client tenant (2026-09-16). `/connect/{id}` has always
+authorized admins, but the admin cards offered only Resume/Start and "Sessions
+you can join" is empty until the owner connects — so the admin path had no way
+in when nobody was on the box. The template patch from the field is landed
+with two additions, because what it enables is stronger than Join: it creates
+the OWNER's session and connects as the owner's local user, i.e. their desktop
+unattended. (1) The button appears only on a truly Running card, the confirm
+says exactly that and that it is logged; (2) the portal now has an `asp.audit`
+logger (stderr → `journalctl -u asp-portal`, prefix `AUDIT`) and writes a line
+for every admin connect to someone else's terminal and every admin Join. Join
+stays the path for live sessions (connects as the admin's own OS user).
+Runbook §3 says so next to the group's existing warning. Same sitting,
+two more: **`/join` returned a 500 while the box was resuming from
+hibernate** — a session survives a hibernate, so Join can be pressed during
+the RAM restore, `ensure_os_user`'s SSM SendCommand dies with
+`InvalidInstanceId`, and the user got a traceback. `join()` now gates on the
+same "truly ready" signals as `connect()` (desktop 8443 answers AND the
+broker lists the host AVAILABLE) and renders the waking page instead, and any
+failure past the gate is the error page, not a 500. And **a ghost broker
+session survived terminating a box** (state UNKNOWN, dead host listed
+UNAVAILABLE by describeServers forever; cleared by hand with
+`delete_session(force=True)`): `admin_remove` now deletes every session on
+the host in every state, forced, still host-filtered so a sibling build box's
+sessions are untouched. 10 new portal tests (`test_admin_connect.py`).
+
 ## 2026-09-23 — portal behind Cloudflare Tunnel + Access: `portal_public` / `portal_public_host`, `ASP_PORTAL_PUBLIC_HOST` (#57)
 
 Field report from a client tenant (2026-09-16), patches field-verified there.

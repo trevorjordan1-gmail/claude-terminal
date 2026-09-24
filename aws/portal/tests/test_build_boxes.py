@@ -210,7 +210,7 @@ def test_admin_remove_spares_sibling_build_box_sessions(monkeypatch):
     monkeypatch.setattr(app.aws_ec2, "terminate", lambda i: None)
     monkeypatch.setattr(broker, "describe_sessions",
                         lambda owner=None: [sibling_sess, victim_sess])
-    monkeypatch.setattr(broker, "delete_session", lambda sid, owner: deleted.append(sid))
+    monkeypatch.setattr(broker, "delete_session", lambda sid, owner, force=False: deleted.append(sid))
 
     app.admin_remove(None, "i-victim")
     assert deleted == ["sess-victim"], deleted

@@ -118,6 +118,14 @@
   {% if not suppress_actions and m.css in ("paused", "stopped") %}
     <form class="inline" method="post" action="/machines/{{ m.id }}/start">
       <button class="ghost">{{ m.css == "paused" and "Resume" or "Start" }}</button></form>
+  {% elif not suppress_actions and m.css == "running" %}
+    {# An admin may reach a terminal that has NO live session — /connect already authorizes
+       admins, the UI just never offered it (#58). The session is created as the OWNER's
+       local user, so this opens the owner's desktop unattended; the confirm says so and
+       the portal logs it. Joining a live session (above) stays the shared path. #}
+    <form class="inline" method="post" action="/connect/{{ m.id }}"
+          onsubmit="return confirm('Open {{ m.owner }}\'s desktop as its owner? No live session exists, so this starts one on their behalf. This is logged.')">
+      <button class="ghost">Connect as owner</button></form>
   {% endif %}
 </div>
 {% endfor %}

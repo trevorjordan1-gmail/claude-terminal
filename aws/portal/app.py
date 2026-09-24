@@ -5,6 +5,7 @@ broker tokens. Session sharing: owners/admins grant view or control to other
 tenant users; guests join the same session through the gateway.
 """
 
+import logging
 import re
 import socket
 import time
@@ -47,6 +48,16 @@ _grants: dict[str, dict[str, str]] = {}
 
 SESSION_COOKIE = "asp_session"
 SESSION_TTL = 8 * 3600
+
+# Audit trail for actions on OTHER people's terminals (#58). uvicorn configures only its
+# own loggers, so this one gets an explicit stderr handler → the journal of asp-portal.
+audit = logging.getLogger("asp.audit")
+if not audit.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("AUDIT %(message)s"))
+    audit.addHandler(_h)
+    audit.setLevel(logging.INFO)
+    audit.propagate = False
 
 
 # ---------- auth plumbing ----------
@@ -544,6 +555,12 @@ def connect(request: Request, instance_id: str):
     # the machine's LocalUser tag, NOT derived from the Owner UPN: build boxes
     # have a fixed shared session user that no UPN maps to
     owner_local = m["local_user"]
+    if not _may_use_machine(user, m):
+        # an admin opening a terminal they do not own — as its owner, unattended (#58).
+        # Authorized by _authz_machine; recorded here because it is a stronger act than
+        # Join (which connects as the admin's own OS user to a session the owner is in).
+        audit.info("admin %s connected to %s (%s) as owner %s — no owner present",
+                   user.get("upn", "?"), m.get("name", instance_id), instance_id, owner_local)
     try:
         session = _ensure_session(owner_local, m)
         aws_ec2.force_display_layout(m["id"], session["Id"])
@@ -602,35 +619,46 @@ def join(request: Request, session_id: str):
     granted = _grants.get(session_id, {}).get(my_local)
     if not granted and not _is_admin(user):
         raise HTTPException(403, "no grant for this session")
-    if _is_admin(user) and not granted:
-        # admins self-grant full control (recorded so revoke works)
-        for s in broker.describe_sessions():
-            if s.get("Id") == session_id:
-                # match the session's host, not its owner — build boxes all
-                # share the 'build' owner, so owner alone is ambiguous
-                owner_machine = next(
-                    (m for m in aws_ec2.list_desktops()
-                     if m["state"] == "running"
-                     and _session_on_host(s, m.get("private_ip") or "")), None)
-                if owner_machine is None:
-                    owner_machine = next(
-                        (m for m in aws_ec2.list_desktops()
-                         if m["local_user"] == s.get("Owner") and m["state"] == "running"), None)
-                if owner_machine:
-                    aws_ec2.ensure_os_user(owner_machine["id"], my_local)
-                grants = _grants.setdefault(session_id, {})
-                grants[my_local] = "control"
-                broker.update_permissions(session_id, s.get("Owner", ""), broker.build_permissions(grants))
-                break
-    label = ""
     try:
         s = next((s for s in broker.describe_sessions() if s.get("Id") == session_id), None)
-        if s:
-            label = next((m["name"] for m in aws_ec2.list_desktops()
-                          if _session_on_host(s, m.get("private_ip") or "")), "")
-    except Exception:
-        pass  # no label -> plain gateway host; joining still works
-    dcv_url, dcv_file = _connect_response(session_id, my_local, label=label)
+        # match the session's host, not its owner — build boxes all share the
+        # 'build' owner, so owner alone is ambiguous
+        machines = aws_ec2.list_desktops() if s else []
+        owner_machine = next(
+            (m for m in machines if _session_on_host(s, m.get("private_ip") or "")), None)
+        if owner_machine is None and s:
+            owner_machine = next(
+                (m for m in machines
+                 if m["local_user"] == s.get("Owner") and m["state"] == "running"), None)
+        # Same "truly ready" gate as connect() (#58 follow-on): a session survives a
+        # hibernate, so Join can be pressed while the box is still restoring RAM — the
+        # SSM SendCommand inside ensure_os_user then dies with InvalidInstanceId and the
+        # user got a traceback. Show the waking page instead, exactly like Connect.
+        if owner_machine is not None:
+            ip = owner_machine.get("private_ip") or ""
+            avail = _broker_available_hosts()
+            in_broker = (avail is None) or ("ip-" + ip.replace(".", "-") in avail)
+            if (owner_machine["state"] != "running"
+                    or not (ip and _dcv_reachable(ip) and in_broker)):
+                return _render("starting.html", user=user, machine=owner_machine)
+        if _is_admin(user) and not granted and s:
+            # admins self-grant full control (recorded so revoke works)
+            if owner_machine:
+                aws_ec2.ensure_os_user(owner_machine["id"], my_local)
+            grants = _grants.setdefault(session_id, {})
+            grants[my_local] = "control"
+            broker.update_permissions(session_id, s.get("Owner", ""), broker.build_permissions(grants))
+            audit.info("admin %s joined %s's session %s on %s with control",
+                       user.get("upn", "?"), s.get("Owner", "?"), session_id,
+                       owner_machine["name"] if owner_machine else "?")
+        label = owner_machine["name"] if owner_machine else ""
+        dcv_url, dcv_file = _connect_response(session_id, my_local, label=label)
+    except HTTPException as e:
+        return _render("error.html", user=user, message=e.detail)
+    except Exception as e:
+        # e.g. botocore InvalidInstanceId from ensure_os_user, or the broker rejecting a
+        # session that just died — a page, not a 500
+        return _render("error.html", user=user, message=str(e))
     return _render(
         "connect.html",
         user=user, dcv_url=dcv_url, session_id=session_id,
@@ -783,12 +811,18 @@ def admin_remove(request: Request, instance_id: str):
         raise HTTPException(404, "unknown terminal")
     # best effort: tear down this machine's broker sessions first — filtered
     # by host, not just owner: removing one build box must not delete the
-    # sessions of its sibling boxes (all owned by 'build')
+    # sessions of its sibling boxes (all owned by 'build'). EVERY state, forced:
+    # an UNKNOWN session on a box about to die is exactly the ghost that
+    # otherwise outlives the instance and leaves describeServers listing a
+    # dead host as UNAVAILABLE forever (#58; cleared by hand once).
     try:
         for s in broker.describe_sessions(owner=m["local_user"]):
-            if (s.get("State") in ("READY", "CREATING")
+            if (s.get("State") not in ("DELETING", "DELETED")
                     and _session_on_host(s, m.get("private_ip") or "")):
-                broker.delete_session(s["Id"], m["local_user"])
+                try:
+                    broker.delete_session(s["Id"], m["local_user"], force=True)
+                except Exception:
+                    pass  # a row the broker dropped between the list and the delete
     except Exception:
         pass
     aws_ec2.terminate(instance_id)
