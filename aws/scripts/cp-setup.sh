@@ -15,6 +15,60 @@ apt-get install -y --no-install-recommends \
 
 systemctl enable --now nginx
 
+# ---- solo tenant (#64): this box is also the NAT, on a 512 MB-1 GB instance ----
+# ASP_SOLO=1 is written by terraform only when `solo = true`; a fleet tenant never enters.
+if [ "${ASP_SOLO:-0}" = "1" ]; then
+  # 1. forward for the private subnets. Same three facts fck-nat runs on: ip_forward,
+  #    a masquerade on the egress interface, and source/dest check off (terraform).
+  #    A oneshot unit re-applies it on every boot; nftables is stock on 24.04.
+  apt-get install -y --no-install-recommends nftables zram-tools
+  cat > /opt/asp/solo-nat.sh <<'NAT'
+#!/bin/bash
+# solo control plane: forward + masquerade the VPC's egress (#64). Idempotent.
+set -uo pipefail
+sysctl -qw net.ipv4.ip_forward=1
+DEV=$(ip -o route get 1.1.1.1 | sed -n 's/.* dev \([^ ]*\).*/\1/p')
+[ -n "$DEV" ] || { echo "solo-nat: no default route device" >&2; exit 1; }
+nft list table ip asp-nat >/dev/null 2>&1 || nft add table ip asp-nat
+nft list chain ip asp-nat postrouting >/dev/null 2>&1 || \
+  nft add chain ip asp-nat postrouting '{ type nat hook postrouting priority srcnat; policy accept; }'
+nft list chain ip asp-nat postrouting | grep -q "oifname \"$DEV\" masquerade" || \
+  nft add rule ip asp-nat postrouting oifname "$DEV" masquerade
+echo "solo-nat: forwarding via $DEV"
+NAT
+  chmod 755 /opt/asp/solo-nat.sh
+  cat > /etc/systemd/system/asp-solo-nat.service <<'UNIT'
+[Unit]
+Description=ASP solo control plane: NAT for the private subnets (#64)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/asp/solo-nat.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable --now asp-solo-nat.service
+  # 2. memory: zram (compressed swap IN RAM, tried first) in front of the disk swapfile
+  #    dcv-cp-install.sh creates. zram-tools sizes it as a percent of RAM; zstd compresses
+  #    the portal's and the JVM's cold pages ~3:1. swappiness high on purpose: with zram the
+  #    kernel should page early and cheaply rather than hold the cache. The broker heap
+  #    (dcv-cp-install.sh) is sized to stay resident — GC walks all of it.
+  cat > /etc/default/zramswap <<'ZRAM'
+ALGO=zstd
+PERCENT=60
+PRIORITY=100
+ZRAM
+  systemctl enable --now zramswap.service || echo "WARN: zramswap did not start" >&2
+  systemctl restart zramswap.service || true
+  printf 'vm.swappiness=150\nvm.vfs_cache_pressure=200\n' > /etc/sysctl.d/90-asp-solo.conf
+  sysctl -q --system
+fi
+
 # ---- TLS (needs the portal/gw A records live at the DNS provider before certbot can validate) ----
 if aws s3 ls "s3://$ASP_BUCKET/scripts/cp-tls.sh" >/dev/null 2>&1; then
   aws s3 cp "s3://$ASP_BUCKET/scripts/cp-tls.sh" /opt/asp/cp-tls.sh

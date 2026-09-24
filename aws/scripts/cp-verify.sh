@@ -26,6 +26,8 @@
 #      assignment when sourced). portal-deploy.sh writes through shlex.quote, which leaves a
 #      value BARE when it needs no quoting (#51), so the test is "bare AND carries a character
 #      a shell would act on", not "has quote marks".
+#   7. solo tenant only (ASP_SOLO=1, #64): forwarding for the private subnets is on and
+#      survives a boot, zram + swap are active, and free memory is not in thrash territory
 set -uo pipefail
 # shellcheck source=/dev/null  # written by the platform at boot; not in the repo
 [ -r /etc/asp-terminal.env ] && . /etc/asp-terminal.env
@@ -160,4 +162,17 @@ if [ -r /etc/asp-portal.env ]; then
 else
   skip "/etc/asp-portal.env absent — portal not deployed here"
 fi
+# ---- 7. solo tenant (#64): this box is the NAT and runs on a 512 MB-1 GB instance ----
+if [ "${ASP_SOLO:-0}" = "1" ]; then
+  echo; echo "solo control plane (#64)"
+  if [ "$(sysctl -n net.ipv4.ip_forward 2>/dev/null)" = "1" ]; then ok "ip_forward=1 (terminals' egress runs through this box)"; else bad "ip_forward is off — terminals have no egress; systemctl start asp-solo-nat"; fi
+  if nft list chain ip asp-nat postrouting 2>/dev/null | grep -q masquerade; then ok "nft masquerade rule present"; else bad "no masquerade rule in nft table asp-nat — run /opt/asp/solo-nat.sh"; fi
+  if systemctl is-enabled asp-solo-nat.service >/dev/null 2>&1; then ok "asp-solo-nat.service enabled (re-applies at boot)"; else bad "asp-solo-nat.service not enabled — forwarding dies at next boot"; fi
+  if grep -q zram /proc/swaps 2>/dev/null; then ok "zram swap active"; else bad "no zram swap — the broker's cold pages have nowhere cheap to go; systemctl start zramswap"; fi
+  if grep -q '^/swapfile' /proc/swaps 2>/dev/null; then ok "disk swapfile active (overflow)"; else bad "/swapfile not active"; fi
+  AVAIL=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo 2>/dev/null); SWAPUSED=$(free -m 2>/dev/null | awk '/Swap:/{print $3}')
+  if [ -n "$AVAIL" ] && [ "$AVAIL" -lt 48 ]; then bad "MemAvailable ${AVAIL} MB (< 48) — thrash territory; set control_plane_type = t4g.micro"; else ok "MemAvailable ${AVAIL:-?} MB, swap used ${SWAPUSED:-?} MB (informational: steady state after 24 h is the number that matters)"; fi
+  if [ -f /proc/pressure/memory ]; then echo "  memory pressure: $(head -1 /proc/pressure/memory)"; fi
+fi
+
 verdict

@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-09-24 — solo profile: a one-user tenant at the lowest fixed cost (#64)
+
+A single-user tenant paid a fleet's fixed floor — control plane, NAT instance, two public
+IPv4 addresses, ~$33/month before the desktop ran an hour. `solo = true` in Terraform keeps
+everything the connect path needs (portal with Entra login, broker, gateway) and removes
+what only exists for scale. The control plane becomes the NAT (source/dest check off, the
+private route table's default route targets its ENI, its SG admits the VPC CIDR, and a
+oneshot `asp-solo-nat.service` sets `ip_forward` + an nftables masquerade on the egress
+device at every boot), so the fck-nat instance and its EIP go — the `egress_ip` output is
+the CP's own address. Every in-use public IPv4 bills the same whether Elastic or
+auto-assigned, so "no static IP" was never a saving; ONE address instead of two is. The
+CP root drops to 8 GB, `cp-setup.sh` adds zram (zstd, 60% of RAM, priority 100) in front
+of a 1 GB disk swapfile with `vm.swappiness=150`, and `dcv-cp-install.sh` runs the broker
+at `-Xmx384m` with the serial collector, a metaspace cap and a 64 MB distributed cache
+(the heap must stay resident — GC walks it; everything else may page). That is what lets
+`control_plane_type` be `t4g.nano` (512 MB, the experiment) or `t4g.micro` (1 GB, the
+safe fallback). Existing tenants: the NAT resources gained a `count`, with `moved` blocks
+so a plan is a no-op; `ASP_SOLO=1` is written to the CP env only when set, so their
+user_data is byte-identical. `cp-verify.sh` gains section 7 (forwarding on and enabled,
+zram + swap active, `MemAvailable` + memory pressure — the after-24-h number that decides
+nano vs micro). `budget-set.sh` accepts a fixed `LIMIT` in `/asp/budget/config` for a
+tenant whose cap is a decision rather than a history. Expected idle floor us-east-2: ~$12
+nano / ~$15 micro, +$3.44 per 40 desktop-hours, egress inside the 100 GB free tier.
+Runbook: build-tenant.md §6.2. Not for a live multi-user tenant — flipping `solo` moves
+the private default route and terminals lose egress during the apply.
+
 ## 2026-09-23 — desktops explicitly denied the portal's Entra secret and the Cloudflare tokens (#59, first half)
 
 Field finding from a client tenant (2026-09-17): **any terminal could read
