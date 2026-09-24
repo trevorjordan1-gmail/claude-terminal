@@ -25,6 +25,13 @@ resource "aws_instance" "controlplane" {
   vpc_security_group_ids = [aws_security_group.controlplane.id]
   iam_instance_profile   = aws_iam_instance_profile.controlplane.name
 
+  # The AMI only matters at first boot; everything else comes from the
+  # bootstrap + SSM. Without this, every new Ubuntu image publish makes
+  # plan want to destroy/recreate the control plane.
+  lifecycle {
+    ignore_changes = [ami]
+  }
+
   root_block_device {
     volume_size = 20
     volume_type = "gp3"
