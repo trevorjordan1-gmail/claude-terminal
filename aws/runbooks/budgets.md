@@ -63,8 +63,10 @@ In order of likelihood:
 2. **A terminal that stopped hibernating.** Check for a keep-awake tag or an
    idle-watchdog override; an always-on desktop costs roughly 30× a lightly used
    one.
-3. **Provisioned gp3 throughput.** 250 MB/s costs $5/volume/month above the free
-   125. At light usage that is more than the terminal's own compute — the first
-   thing to reconsider on a fleet that is mostly idle.
+3. **Provisioned gp3 throughput.** The template ships at the free 125 MB/s.
+   Anything above it costs $0.04/MB/s/month per volume ($5 for 250 MB/s),
+   billed even while hibernated — at light usage that is more than the
+   terminal's own compute. Check `EBS:VolumeP-Throughput.gp3` and
+   `describe-volumes` for anyone who raised it.
 4. **Orphaned volumes.** A terminated terminal whose volume was not deleted bills
    $4/month per 50 GB forever, attached to nothing.
