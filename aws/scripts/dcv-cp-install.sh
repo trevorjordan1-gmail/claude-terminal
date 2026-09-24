@@ -38,11 +38,14 @@ fi
 # 2GB host: shrink the hardcoded JVM heap (-Xmx2g) and the off-heap cache.
 # solo (#64): one user, one session — the broker holds almost nothing, so on a 512 MB-1 GB
 # box the heap drops to 384m with the serial collector (one GC thread, smallest footprint)
-# and a metaspace cap; the off-heap distributed cache to 64 MB. The heap is what must stay
-# in RAM — everything else may page to zram. Re-runnable: matches any -Xmx already there.
+# and a metaspace cap; the off-heap distributed cache (an Apache Ignite data region,
+# preallocated) to 128 MB — 64 was below Ignite's own baseline: "Out of memory in data
+# region Default_Region maxSize=64 MiB" at startup with zero sessions, JVM halted. The heap
+# is what must stay in RAM — everything else may page to zram. Re-runnable: matches any
+# -Xmx already there.
 HEAP=1g; CACHE_MB=256; JVM_EXTRA=""
 if [ "${ASP_SOLO:-0}" = "1" ]; then
-  HEAP=384m; CACHE_MB=64
+  HEAP=384m; CACHE_MB=128
   JVM_EXTRA=" -XX:+UseSerialGC -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=32m -Xss512k"
 fi
 COMMON=/usr/share/dcv-session-manager-broker/bin/common.sh
@@ -97,6 +100,14 @@ if ! dpkg -s nice-dcv-connection-gateway >/dev/null 2>&1; then
   apt-get install -y "/tmp/$GATEWAY_DEB" || { echo "FATAL: gateway install failed" >&2; exit 1; }
 fi
 
+# cp-tls.sh may have run BEFORE this package existed (first boot with the DNS records
+# already live): its deploy hook chowns the copied key to the gateway user only when that
+# user exists, so the key is root:root 0600 and the gateway dies with "Unable to read
+# private key file: Permission denied" on every start. The package creates dcvcgw; now
+# that it exists, take ownership of whatever cp-tls left. Found on the first solo tenant.
+if [ -d /etc/dcv-connection-gateway/certs ] && id dcvcgw >/dev/null 2>&1; then
+  chown -R dcvcgw /etc/dcv-connection-gateway/certs
+fi
 CERT_LINES=""
 if [ -f /etc/dcv-connection-gateway/certs/cert.pem ]; then
   CERT_LINES=$'cert-file = "/etc/dcv-connection-gateway/certs/cert.pem"\ncert-key-file = "/etc/dcv-connection-gateway/certs/key.pem"'
