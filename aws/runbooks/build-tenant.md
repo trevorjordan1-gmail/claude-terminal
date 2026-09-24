@@ -167,6 +167,8 @@ cert_email       = "<ops-contact@org>"
 artifacts_bucket = "$ORG-asp-artifacts-$ACCT"
 # portal_public      = false                  # portal behind Cloudflare Tunnel + Access (§6.1)
 # portal_public_host = "terminals.example.com" # its first-level public name (§6.1)
+# solo               = true                   # one-user tenant, lowest fixed cost (§6.2)
+# control_plane_type = "t4g.nano"             # with solo: nano (experiment) or micro (safe)
 EOF
 terraform init -backend-config=backend.hcl && terraform apply
 # outputs: portal_url, gateway_endpoint, controlplane_public_ip, controlplane_instance_id, dns_records_needed, desktop_launch_template_id, desktop_subnet_ids, client_code, bedrock_zdr_scp_json
@@ -233,6 +235,35 @@ Recipe (field-verified 2026-09-16 on a client tenant):
    Entra with the public name in `redirect_uri`.
 
 **Do not** do this on the gateway name, and do not read it as "certbot is optional now".
+
+### 6.2 Solo tenant — one user, the lowest fixed cost (#64)
+
+A one-user tenant pays a fleet's fixed floor: control plane, NAT instance, two public
+IPv4 addresses (~$33/month before the desktop runs an hour). `solo = true` keeps every
+component the connect path needs — portal, broker, gateway, the same Entra login — and
+removes what only exists for scale:
+
+| | fleet | solo |
+|---|---|---|
+| control plane | t4g.small, 20 GB | `control_plane_type` t4g.nano (512 MB, experiment) or t4g.micro (1 GB, safe); 8 GB root; zram + 1 GB swap; broker heap 384m serial GC, cache 64 MB |
+| egress | fck-nat t4g.nano + its EIP | the control plane forwards (source/dest check off, private default route → its ENI, `asp-solo-nat.service`); `egress_ip` = the CP's EIP |
+| public IPv4 | 2 | 1 — every in-use address bills the same, Elastic or not; the count is the cost |
+| idle floor (us-east-2) | ~$33 | ~$12 nano / ~$15 micro; +$3.44 per 40 desktop-hours |
+
+Facts that shape it:
+- **"No static IP" saves nothing.** AWS bills $0.005/h for every in-use public IPv4.
+  The CP keeps its EIP (DNS must survive a stop/start); the saving is the NAT's address.
+- **The broker JVM heap must stay resident** — garbage collection walks the whole heap,
+  and a paged heap thrashes. Everything else (portal, SSM agent, JVM metaspace) may sit in
+  zram. `cp-verify.sh` §7 reports `MemAvailable` and `/proc/pressure/memory`: read it after
+  24 h, and if the nano thrashes, `control_plane_type = "t4g.micro"` is the one-variable fix.
+- **Not for a live multi-user tenant.** Flipping `solo` moves the private default route;
+  terminals lose egress during the apply. Build solo tenants solo.
+- Budget: `budget-set.sh` accepts `"LIMIT": "30"` in `/asp/budget/config` when the cap is a
+  decision rather than a history (runbooks/budgets.md).
+
+Verify on the box: `sudo bash /opt/asp/cp-verify.sh` (section 7), and from any terminal
+`curl -s https://checkip.amazonaws.com` must print the CP's EIP.
 
 ## 7. Provision the control plane (SSM, in this order)
 

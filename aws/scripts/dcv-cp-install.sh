@@ -21,8 +21,11 @@ PROPS=/etc/dcv-session-manager-broker/session-manager-broker.properties
 CA_SRC=/var/lib/dcvsmbroker/security/dcvsmbroker_ca.pem
 
 # ---- swap: broker docs want 8GB; we run -Xmx1g on a 2GB Graviton + swap headroom ----
+# solo (#64): 1 GB on the 8 GB root, behind zram (cp-setup.sh) — the disk swap is the
+# overflow, not the working set.
+SWAP_SIZE=2G; [ "${ASP_SOLO:-0}" = "1" ] && SWAP_SIZE=1G
 if [ ! -f /swapfile ]; then
-  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  fallocate -l "$SWAP_SIZE" /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
   echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
@@ -32,15 +35,27 @@ if ! dpkg -s nice-dcv-session-manager-broker >/dev/null 2>&1; then
   apt-get install -y "/tmp/$BROKER_DEB" || { echo "FATAL: broker install failed" >&2; exit 1; }
 fi
 
-# 2GB host: shrink the hardcoded JVM heap (-Xmx2g) and the off-heap cache
-sed -i 's/-Xmx2g/-Xmx1g/' /usr/share/dcv-session-manager-broker/bin/common.sh
+# 2GB host: shrink the hardcoded JVM heap (-Xmx2g) and the off-heap cache.
+# solo (#64): one user, one session — the broker holds almost nothing, so on a 512 MB-1 GB
+# box the heap drops to 384m with the serial collector (one GC thread, smallest footprint)
+# and a metaspace cap; the off-heap distributed cache to 64 MB. The heap is what must stay
+# in RAM — everything else may page to zram. Re-runnable: matches any -Xmx already there.
+HEAP=1g; CACHE_MB=256; JVM_EXTRA=""
+if [ "${ASP_SOLO:-0}" = "1" ]; then
+  HEAP=384m; CACHE_MB=64
+  JVM_EXTRA=" -XX:+UseSerialGC -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=32m -Xss512k"
+fi
+COMMON=/usr/share/dcv-session-manager-broker/bin/common.sh
+sed -i -E "s/-Xmx[0-9]+[mgMG]/-Xmx$HEAP/" "$COMMON"
+sed -i -E 's/ -XX:\+UseSerialGC -XX:MaxMetaspaceSize=[0-9]+m -XX:ReservedCodeCacheSize=[0-9]+m -Xss[0-9]+k//' "$COMMON"
+[ -z "$JVM_EXTRA" ] || sed -i -E "s/-Xmx$HEAP/-Xmx$HEAP$JVM_EXTRA/" "$COMMON"
 
 for kv in \
   "client-to-broker-connector-https-port = 8446" \
   "agent-to-broker-connector-https-port = 8445" \
   "enable-gateway = true" \
   "gateway-to-broker-connector-https-port = 8447" \
-  "broker-to-broker-distributed-memory-max-size-mb = 256" \
+  "broker-to-broker-distributed-memory-max-size-mb = $CACHE_MB" \
 ; do
   key="${kv%% =*}"
   sed -i "/^[# ]*${key} *=/d" "$PROPS"

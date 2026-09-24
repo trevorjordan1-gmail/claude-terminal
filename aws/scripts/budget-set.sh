@@ -28,6 +28,7 @@ if [ -z "$CONF" ] || [ "$CONF" = "None" ]; then
 fi
 conf() { echo "$CONF" | python3 -c "import json,sys;print(json.load(sys.stdin).get('$1',''))"; }
 EMAIL=$(conf ALERT_EMAIL)
+LIMIT=$(conf LIMIT)                      # optional: a fixed monthly cap, skips the sizing (#64)
 HOURS=$(conf HOURS_PER_TERMINAL); HOURS=${HOURS:-25}
 HEADROOM=$(conf HEADROOM_PCT);    HEADROOM=${HEADROOM:-30}
 [ -n "$EMAIL" ] || { echo "budget-set: config present but ALERT_EMAIL missing — not setting a budget" >&2; exit 1; }
@@ -69,6 +70,14 @@ PY
 BASE=$(python3 -c "print(max($PEAK, $MODEL))")
 AMOUNT=$(python3 -c "print(round($BASE * (1 + $HEADROOM/100), 2))")
 echo "budget-set: terminals=$TERMINALS  peak-month=\$$PEAK  model=\$$MODEL  ->  limit=\$$AMOUNT (+${HEADROOM}%)"
+# A tenant whose limit is a DECISION rather than a history (a solo tenant, a trial with a
+# hard number agreed up front) sets LIMIT and the sizing above is informational only.
+if [ -n "$LIMIT" ]; then
+  python3 -c "import sys; float(sys.argv[1])" "$LIMIT" 2>/dev/null \
+    || { echo "budget-set: LIMIT '$LIMIT' is not a number — not setting a budget" >&2; exit 1; }
+  AMOUNT=$LIMIT
+  echo "budget-set: fixed LIMIT set in /asp/budget/config -> limit=\$$AMOUNT (sizing ignored)"
+fi
 
 # ---- 3. create or update -------------------------------------------------
 BUDGET=asp-terminals-monthly

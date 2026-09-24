@@ -58,6 +58,7 @@ resource "aws_route_table_association" "public" {
 # ---- fck-nat: NAT on a t4g.nano instead of a managed NAT gateway ----
 
 data "aws_ami" "fcknat" {
+  count       = var.solo ? 0 : 1
   most_recent = true
   owners      = ["568608671756"]
   filter {
@@ -67,6 +68,7 @@ data "aws_ami" "fcknat" {
 }
 
 resource "aws_security_group" "nat" {
+  count       = var.solo ? 0 : 1
   name        = "asp-nat"
   description = "fck-nat: forward anything from inside the VPC"
   vpc_id      = aws_vpc.main.id
@@ -86,10 +88,11 @@ resource "aws_security_group" "nat" {
 }
 
 resource "aws_instance" "nat" {
-  ami                    = data.aws_ami.fcknat.id
+  count                  = var.solo ? 0 : 1
+  ami                    = data.aws_ami.fcknat[0].id
   instance_type          = "t4g.nano"
   subnet_id              = aws_subnet.public.id
-  vpc_security_group_ids = [aws_security_group.nat.id]
+  vpc_security_group_ids = [aws_security_group.nat[0].id]
   source_dest_check      = false
   tags                   = { Name = "asp-nat", Role = "nat" }
 
@@ -112,7 +115,8 @@ resource "aws_instance" "nat" {
 # address already cost. (An UNattached one costs the same again — release it
 # if this NAT is ever torn down.)
 resource "aws_eip" "nat" {
-  instance = aws_instance.nat.id
+  count    = var.solo ? 0 : 1
+  instance = aws_instance.nat[0].id
   domain   = "vpc"
   tags     = { Name = "asp-nat-egress" }
 }
@@ -136,11 +140,13 @@ resource "aws_vpc_endpoint" "s3" {
   tags = { Name = "asp-s3" }
 }
 
+# solo (#64): the control plane forwards for the private subnets — same ENI-as-target
+# shape as fck-nat, just on the box that already has the public address.
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
   route {
     cidr_block           = "0.0.0.0/0"
-    network_interface_id = aws_instance.nat.primary_network_interface_id
+    network_interface_id = var.solo ? aws_instance.controlplane.primary_network_interface_id : aws_instance.nat[0].primary_network_interface_id
   }
   tags = { Name = "asp-private" }
 }
@@ -153,4 +159,19 @@ resource "aws_route_table_association" "private_a" {
 resource "aws_route_table_association" "private_b" {
   subnet_id      = aws_subnet.private_b.id
   route_table_id = aws_route_table.private.id
+}
+
+# existing tenants: the NAT resources gained a count, so their addresses changed — keep
+# them in place (same pattern as cp_portal_https, #57)
+moved {
+  from = aws_security_group.nat
+  to   = aws_security_group.nat[0]
+}
+moved {
+  from = aws_instance.nat
+  to   = aws_instance.nat[0]
+}
+moved {
+  from = aws_eip.nat
+  to   = aws_eip.nat[0]
 }

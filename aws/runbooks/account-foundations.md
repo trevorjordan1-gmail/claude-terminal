@@ -81,7 +81,8 @@ aws sts get-caller-identity --query Arn --output text
 
 New accounts start with quotas sized for experiments, not a fleet. Increases take hours to
 days, so ask now. Every terminal is `m5a.large` = **2 vCPUs**; the control plane is
-`t4g.small` = 2; the NAT instance `t4g.nano` = 2. All count against one quota.
+`t4g.small` = 2; the NAT instance `t4g.nano` = 2 (a solo tenant, build-tenant.md §6.2: one
+`t4g.nano`/`micro` = 2, no NAT). All count against one quota.
 
 ```bash
 R=<region>

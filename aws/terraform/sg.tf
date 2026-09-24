@@ -60,6 +60,21 @@ resource "aws_security_group_rule" "cp_broker_agents" {
   source_security_group_id = aws_security_group.desktop.id
 }
 
+# solo (#64): the control plane is the NAT, so it must accept anything the private
+# subnets send it for forwarding — the same rule fck-nat's SG carries. Desktops still
+# cannot reach the portal/broker ports any more than they could before (8445 was already
+# open to them; 443 and 8443 are open to the world).
+resource "aws_security_group_rule" "cp_nat_forward" {
+  count             = var.solo ? 1 : 0
+  type              = "ingress"
+  description       = "solo: forward anything from inside the VPC"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = [var.vpc_cidr]
+  security_group_id = aws_security_group.controlplane.id
+}
+
 resource "aws_security_group_rule" "cp_egress" {
   type              = "egress"
   from_port         = 0

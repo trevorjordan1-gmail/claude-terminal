@@ -6,6 +6,8 @@ Dormant by default: no `/asp/budget/config` parameter, no budget, no failure.
 ```
 /asp/budget/config   (String)
 { "ALERT_EMAIL": "ops@example.com", "HOURS_PER_TERMINAL": "25", "HEADROOM_PCT": "30" }
+# optional "LIMIT": "30" — a fixed cap (a solo tenant, a trial with a number agreed up
+# front); the sizing below still prints but the budget is set to LIMIT (#64)
 ```
 
 Then `budget-set.sh`. Re-run it monthly (or after adding terminals) — it is

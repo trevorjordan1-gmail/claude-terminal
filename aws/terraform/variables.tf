@@ -69,3 +69,20 @@ variable "portal_public_host" {
   type        = string
   default     = ""
 }
+
+# ---- solo tenant (#64) ----
+# A one-user tenant pays for a fleet's fixed floor: a control plane, a NAT instance, two
+# public IPv4 addresses. `solo` keeps every component the connect path needs (portal,
+# broker, gateway) and removes the ones that only exist for scale: the control plane
+# forwards the private subnets' egress itself (source/dest check off, private default
+# route -> its ENI, SG admits the VPC), so there is no NAT instance and ONE public
+# address instead of two — every in-use public IPv4 bills the same, Elastic or not, so the
+# count is what matters. The control plane also gets an 8 GB root, zram + swap and a
+# trimmed broker JVM (cp-setup.sh / dcv-cp-install.sh read ASP_SOLO=1), which is what lets
+# `control_plane_type` drop to t4g.nano (512 MB; experiment) or t4g.micro (1 GB; safe).
+# The egress identity (`egress_ip` output) becomes the control plane's own EIP.
+variable "solo" {
+  description = "Single-user tenant at the lowest fixed cost: the control plane is also the NAT (no fck-nat instance, no second EIP), 8 GB CP root, zram + swap + trimmed broker heap so control_plane_type can be t4g.nano/micro. Set with control_plane_type = \"t4g.nano\" (or micro). Do NOT flip on a live multi-user tenant: terminals lose egress while the route moves (#64)."
+  type        = bool
+  default     = false
+}

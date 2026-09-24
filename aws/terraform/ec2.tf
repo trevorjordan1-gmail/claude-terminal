@@ -24,6 +24,9 @@ resource "aws_instance" "controlplane" {
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.controlplane.id]
   iam_instance_profile   = aws_iam_instance_profile.controlplane.name
+  # solo (#64): this box forwards the private subnets' egress, so it must accept packets
+  # that are not addressed to it — the same switch fck-nat runs with
+  source_dest_check = !var.solo
 
   # The AMI only matters at first boot; everything else comes from the
   # bootstrap + SSM. Without this, every new Ubuntu image publish makes
@@ -33,7 +36,8 @@ resource "aws_instance" "controlplane" {
   }
 
   root_block_device {
-    volume_size = 20
+    # solo (#64): 8 GB is plenty for nginx + broker + gateway + portal + a 1 GB swapfile
+    volume_size = var.solo ? 8 : 20
     volume_type = "gp3"
     encrypted   = true
   }
@@ -54,7 +58,9 @@ resource "aws_instance" "controlplane" {
       ASP_CERT_EMAIL  = var.cert_email
       ASP_PROFILE     = var.profile
       ASP_BRAND       = var.brand
-    }, var.portal_public_host != "" ? { ASP_PORTAL_PUBLIC_HOST = var.portal_public_host } : {})
+      }, var.portal_public_host != "" ? { ASP_PORTAL_PUBLIC_HOST = var.portal_public_host } : {},
+      # written only when set (#64), for the same byte-identical reason
+    var.solo ? { ASP_SOLO = "1" } : {})
   })
 
   tags = { Name = "asp-controlplane", Role = "controlplane" }
