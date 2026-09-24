@@ -161,6 +161,8 @@ client_code      = "acme"
 dns_zone         = "terminals.example.com"
 cert_email       = "<ops-contact@org>"
 artifacts_bucket = "$ORG-asp-artifacts-$ACCT"
+# portal_public      = false                  # portal behind Cloudflare Tunnel + Access (§6.1)
+# portal_public_host = "terminals.example.com" # its first-level public name (§6.1)
 EOF
 terraform init -backend-config=backend.hcl && terraform apply
 # outputs: portal_url, gateway_endpoint, controlplane_public_ip, controlplane_instance_id, dns_records_needed, desktop_launch_template_id, desktop_subnet_ids, client_code, bedrock_zdr_scp_json
@@ -190,6 +192,43 @@ done
 ```
 **`proxied` MUST be `false` (grey cloud)** — DCV's 8443 TCP/QUIC cannot pass
 the Cloudflare proxy, and certbot DNS-01 doesn't care either way.
+
+### 6.1 Portal behind Cloudflare Tunnel + Access (optional, #57)
+
+A tenant that fronts everything with Cloudflare Access may want the portal there too.
+Two facts decide the shape:
+
+- **Universal SSL covers ONE label** under the zone (`*.<zone>` + apex). `portal.terminals.<zone>`
+  is two labels, so a proxied record for it has **no edge certificate** and TLS fails at the edge
+  (`sslv3 alert handshake failure`). Either buy Advanced Certificate Manager, or give the portal a
+  **first-level public name** — `terminals.<zone>` — which is what the field did.
+- **The DCV gateway cannot traverse the proxy.** `gw.<subdomain>` stays a grey-cloud A record, so
+  `cp-tls.sh`'s wildcard cert is **still required** for the gateway and the per-terminal vanity
+  names. Moving the portal behind Access removes nothing from the certbot path.
+
+Recipe (field-verified 2026-09-16 on a client tenant):
+
+1. **Terraform**: `portal_public = false` (closes 443 on the EIP — external scan shows 8443 only)
+   and `portal_public_host = "terminals.<zone>"`. On a **new** tenant that is all: the name reaches
+   the control plane at boot as `ASP_PORTAL_PUBLIC_HOST`. On a **live** control plane a `user_data`
+   change stops/starts the instance — instead append
+   `ASP_PORTAL_PUBLIC_HOST='terminals.<zone>'` to `/etc/asp-terminal.env` from the tenant's
+   `tenant-custom-cp.sh` and still set the two variables so the state matches reality.
+2. **`portal-deploy.sh`** (via `rollout.sh cp` + `rollout.sh portal`) then writes the public name
+   as the portal's `ASP_PORTAL_HOST` in `/etc/asp-portal.env` (OIDC redirect URI + links) and adds
+   it to nginx `server_name`. `ASP_PORTAL_HOST` in `/etc/asp-terminal.env` is untouched, so the
+   cert lineage and `cp-verify.sh` keep working.
+3. **Tunnel** (`cloudflared` as a system service on the CP, token from an SSM SecureString such
+   as `/asp/cloudflare/tunnel-token`, pinned version, installed by `tenant-custom-cp.sh`):
+   remote-managed ingress `terminals.<zone> → https://localhost:443` with `originServerName` and
+   `httpHostHeader` both set to `portal.terminals.<zone>`, so nginx, the cert and the portal see
+   the request they always did. Access application on the public name with the tenant's standard
+   policies; an off-box probe sends the Access service token.
+4. **Entra**: add `https://terminals.<zone>/auth/callback` as a redirect URI on the portal app
+   registration (Global Admin, one sitting). Verify: `/login` through the tunnel redirects to
+   Entra with the public name in `redirect_uri`.
+
+**Do not** do this on the gateway name, and do not read it as "certbot is optional now".
 
 ## 7. Provision the control plane (SSM, in this order)
 
@@ -235,7 +274,7 @@ curl -s http://127.0.0.1:8080/healthz  # [{"ok":true,...}]
 # from anywhere:
 curl -s https://portal.<dns_zone>/healthz          # valid LE cert + {"ok":true}
 openssl s_client -connect gw.<dns_zone>:8443 </dev/null | openssl x509 -noout -issuer  # [Let's Encrypt]
-# external scan: ONLY 443 + 8443 open on the EIP; desktops unreachable; no port 22 anywhere
+# external scan: ONLY 443 + 8443 open on the EIP (8443 alone with portal_public = false, §6.1); desktops unreachable; no port 22 anywhere
 # from inside any terminal: egress is the NAT's Elastic IP (terraform output egress_ip) — static, allow-listable
 curl -s https://checkip.amazonaws.com                 # [== terraform output egress_ip]
 ```

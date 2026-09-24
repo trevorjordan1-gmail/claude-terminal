@@ -1,13 +1,13 @@
 output "dns_records_needed" {
-  description = "Create these A records at the DNS provider (DNS-only / grey cloud)"
-  value = {
-    "portal.${var.dns_zone}" = aws_eip.controlplane.public_ip
-    "gw.${var.dns_zone}"     = aws_eip.controlplane.public_ip
-  }
+  description = "Create these A records at the DNS provider (DNS-only / grey cloud). With portal_public = false the portal record is the Tunnel's CNAME instead (#57) — the gateway record stays grey-cloud regardless: DCV cannot traverse the proxy"
+  value = merge(
+    { "gw.${var.dns_zone}" = aws_eip.controlplane.public_ip },
+    var.portal_public ? { "portal.${var.dns_zone}" = aws_eip.controlplane.public_ip } : {},
+  )
 }
 
 output "portal_url" {
-  value = "https://portal.${var.dns_zone}"
+  value = "https://${coalesce(var.portal_public_host, "portal.${var.dns_zone}")}"
 }
 
 output "gateway_endpoint" {

@@ -49,3 +49,23 @@ variable "profile" {
     error_message = "profile must be \"standard\" or \"medical\"."
   }
 }
+
+# ---- portal exposure (#57) ----
+# Cloudflare's free Universal SSL covers ONE label under the zone (*.<zone> + apex), so the
+# runbook's portal.terminals.<zone> (two labels) has no edge certificate and cannot be
+# proxied through a Tunnel + Access — TLS fails at the edge. A tenant that wants the portal
+# behind Access therefore publishes it under a FIRST-LEVEL name (e.g. terminals.<zone>) and
+# closes 443 on the EIP. The DCV gateway is unaffected either way: it stays a grey-cloud A
+# record (DCV cannot traverse the proxy), so cp-tls.sh's wildcard cert is still required
+# for the gateway and the per-terminal vanity names — this is NOT "no more certbot".
+variable "portal_public" {
+  description = "Expose the portal's 443 on the control plane EIP (the default: nginx + Let's Encrypt). A tenant that publishes the portal through a Cloudflare Tunnel + Access instead sets false: no inbound 443 at all — only the DCV gateway's 8443 stays open, which cannot be proxied (#57)."
+  type        = bool
+  default     = true
+}
+
+variable "portal_public_host" {
+  description = "Optional public name users type for the portal when it is published through a proxy/tunnel under a different hostname than the cert + nginx are built for (one label under the Cloudflare zone, e.g. terminals.example.com). Reaches the control plane as ASP_PORTAL_PUBLIC_HOST: portal-deploy.sh uses it for the OIDC redirect URI, links and nginx server_name, while cp-tls.sh keeps deriving the wildcard cert from ASP_PORTAL_HOST. Empty = portal.<dns_zone>. NOTE: on a LIVE control plane a change here rewrites user_data, which stops/starts the instance — on a running tenant prefer appending the line to /etc/asp-terminal.env via tenant-custom-cp.sh and re-running portal-deploy.sh (#57)."
+  type        = string
+  default     = ""
+}

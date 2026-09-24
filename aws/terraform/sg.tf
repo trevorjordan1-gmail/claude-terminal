@@ -10,7 +10,11 @@ resource "aws_security_group" "controlplane" {
   tags        = { Name = "asp-controlplane" }
 }
 
+# portal_public = false (#57): a tenant that publishes the portal through a Cloudflare
+# Tunnel + Access has no inbound 443 at all — only the gateway's 8443 stays open, which
+# cannot be proxied. The cert + nginx on the box are unchanged; only the SG rule goes.
 resource "aws_security_group_rule" "cp_portal_https" {
+  count             = var.portal_public ? 1 : 0
   type              = "ingress"
   description       = "portal HTTPS"
   from_port         = 443

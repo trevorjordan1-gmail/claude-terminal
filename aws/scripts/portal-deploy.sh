@@ -26,7 +26,12 @@ SECRETS=$(aws ssm get-parameter --region "$ASP_REGION" --name /asp/portal/secret
 sq() { printf "'%s'" "${1//\'/\'\\\'\'}"; }   # single-quote, splicing any ' as '\'' (bootstrap.sh.tftpl, #12)
 umask 077
 {
-  echo "ASP_PORTAL_HOST=$(sq "$ASP_PORTAL_HOST")"
+  # ASP_PORTAL_PUBLIC_HOST (optional, #57): the name users type when the portal is
+  # published through a proxy/tunnel under a DIFFERENT hostname than the one the cert +
+  # nginx are built for — one label under the Cloudflare zone, because Universal SSL covers
+  # a single label (portal.terminals.<zone> has no edge cert). The portal's OIDC redirect
+  # URI and links use it; cp-tls/nginx keep deriving the wildcard from ASP_PORTAL_HOST.
+  echo "ASP_PORTAL_HOST=$(sq "${ASP_PORTAL_PUBLIC_HOST:-$ASP_PORTAL_HOST}")"
   echo "ASP_GW_HOST=$(sq "$ASP_GW_HOST")"
   echo "ASP_REGION=$(sq "$ASP_REGION")"
   echo "ASP_CUSTOMER=$(sq "$ASP_CUSTOMER")"
@@ -88,7 +93,7 @@ if [ -d "/etc/letsencrypt/live/$ASP_PORTAL_HOST" ]; then
   cat > /etc/nginx/sites-available/asp-portal <<NGINX
 server {
   listen 443 ssl;
-  server_name $ASP_PORTAL_HOST;
+  server_name $ASP_PORTAL_HOST ${ASP_PORTAL_PUBLIC_HOST:-};
   ssl_certificate     /etc/letsencrypt/live/$ASP_PORTAL_HOST/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/$ASP_PORTAL_HOST/privkey.pem;
   location / {

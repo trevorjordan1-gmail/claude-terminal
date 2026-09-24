@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-09-23 — portal behind Cloudflare Tunnel + Access: `portal_public` / `portal_public_host`, `ASP_PORTAL_PUBLIC_HOST` (#57)
+
+Field report from a client tenant (2026-09-16), patches field-verified there.
+Cloudflare's free Universal SSL covers **one label** under the zone, so the
+runbook's `portal.terminals.<zone>` has no edge certificate and cannot be
+proxied — a Tunnel in front of it fails at the edge with
+`sslv3 alert handshake failure`. The tenant published the portal under a
+first-level name behind Tunnel + Access and closed 443 on the EIP; the
+engineer wants the option on every tenant. Landed as generic config, not a
+tenant one-off: `portal_public` (bool, default true) gates the control
+plane's 443 SG rule, and `portal_public_host` (default empty) reaches the CP
+as `ASP_PORTAL_PUBLIC_HOST` — written into user_data **only when set**, so
+every existing tenant's plan is a no-op. `portal-deploy.sh` writes the public
+name as the portal's `ASP_PORTAL_HOST` (OIDC redirect URI + links) and adds it
+to nginx `server_name`, while `cp-tls.sh`, `cert-expiry-check.sh` and
+`cp-verify.sh` keep deriving from `/etc/asp-terminal.env`'s `ASP_PORTAL_HOST`,
+so the wildcard lineage is untouched. `portal_url` and `dns_records_needed`
+follow the variables. **Not** "certbot is optional now": the DCV gateway
+cannot traverse the proxy, so `gw.<subdomain>` stays a grey-cloud A record
+and the wildcard cert is still required for it and the per-terminal vanity
+names — `build-tenant.md` §6.1 has the recipe (tunnel ingress with
+`originServerName`/`httpHostHeader` = the cert name, Access app, Entra
+redirect URI) and says so in as many words. On a live CP a `user_data`
+change stops/starts the instance, so the runbook routes existing tenants
+through `tenant-custom-cp.sh` for the env line and keeps the variables for
+state parity.
+
 ## 2026-09-14 — the four heads never appear: a stored monitors.xml generated per session from the live RandR set (#43)
 
 Root cause (mutter gnome-46 source, #43): `ensure_configured` picks a stored

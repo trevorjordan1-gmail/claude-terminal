@@ -35,7 +35,9 @@ resource "aws_instance" "controlplane" {
     bucket = var.artifacts_bucket
     script = "cp-setup.sh"
     arch   = "aarch64"
-    env = {
+    # ASP_PORTAL_PUBLIC_HOST is written only when set (#57), so an unchanged tenant's
+    # user_data — and therefore its control plane — is byte-identical to before.
+    env = merge({
       ASP_DNS_ZONE    = var.dns_zone
       ASP_PORTAL_HOST = "portal.${var.dns_zone}"
       ASP_GW_HOST     = "gw.${var.dns_zone}"
@@ -45,7 +47,7 @@ resource "aws_instance" "controlplane" {
       ASP_CERT_EMAIL  = var.cert_email
       ASP_PROFILE     = var.profile
       ASP_BRAND       = var.brand
-    }
+    }, var.portal_public_host != "" ? { ASP_PORTAL_PUBLIC_HOST = var.portal_public_host } : {})
   })
 
   tags = { Name = "asp-controlplane", Role = "controlplane" }
