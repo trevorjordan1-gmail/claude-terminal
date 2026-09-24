@@ -207,6 +207,47 @@ data "aws_iam_policy_document" "desktop" {
   }
 }
 
+# ---- what a desktop must NEVER read (#59) ----
+# The AWS-managed AmazonSSMManagedInstanceCore attached below grants ssm:GetParameter* on
+# "*", and the account's default SSM KMS key decrypts for any principal via SSM — so the
+# narrow Allow statements above are not what bounds a desktop; they are redundant with the
+# managed policy, and removing them changes nothing. ONLY an explicit Deny keeps a terminal
+# (whose owner has passwordless sudo) out of a tenant secret. Found on a client tenant: any
+# terminal could read the portal's Entra client secret and the Cloudflare tokens.
+# Scope here = the secrets no desktop script reads at all, so this is safe to apply to a
+# running fleet. /asp/backup/* and /asp/healthchecks/* are still read by backup-arm.sh and
+# join this list when the per-terminal backup provisioner lands (#59, second half).
+data "aws_iam_policy_document" "desktop_deny_secrets" {
+  statement {
+    sid    = "DenyTenantSecrets"
+    effect = "Deny"
+    actions = [
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+      "ssm:GetParameterHistory",
+    ]
+    resources = [
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/asp/portal/secrets",
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/asp/cloudflare/*",
+    ]
+  }
+  # GetParametersByPath is authorized on the PATH, not the leaf — a Deny on the leaves
+  # above would not stop `--path /asp --recursive` from returning them. No desktop script
+  # walks the hierarchy (they read named parameters), so deny the walk outright.
+  statement {
+    sid       = "DenyParameterWalk"
+    effect    = "Deny"
+    actions   = ["ssm:GetParametersByPath"]
+    resources = ["arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/asp*"]
+  }
+}
+
+resource "aws_iam_role_policy" "desktop_deny_secrets" {
+  name   = "asp-desktop-deny-secrets"
+  role   = aws_iam_role.desktop.id
+  policy = data.aws_iam_policy_document.desktop_deny_secrets.json
+}
+
 resource "aws_iam_role_policy" "desktop" {
   name   = "asp-desktop"
   role   = aws_iam_role.desktop.id

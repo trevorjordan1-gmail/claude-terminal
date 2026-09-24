@@ -279,6 +279,8 @@ curl -s http://127.0.0.1:8080/healthz  # [{"ok":true,...}]
 curl -s https://portal.<dns_zone>/healthz          # valid LE cert + {"ok":true}
 openssl s_client -connect gw.<dns_zone>:8443 </dev/null | openssl x509 -noout -issuer  # [Let's Encrypt]
 # external scan: ONLY 443 + 8443 open on the EIP (8443 alone with portal_public = false, §6.1); desktops unreachable; no port 22 anywhere
+# from ANY terminal (SSM shell as the owner): the tenant secrets are out of reach — must be AccessDenied (#59):
+#   aws ssm get-parameter --name /asp/portal/secrets --with-decryption ; aws ssm get-parameters-by-path --path /asp --recursive
 # from inside any terminal: egress is the NAT's Elastic IP (terraform output egress_ip) — static, allow-listable
 curl -s https://checkip.amazonaws.com                 # [== terraform output egress_ip]
 ```

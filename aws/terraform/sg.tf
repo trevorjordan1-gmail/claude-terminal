@@ -24,6 +24,12 @@ resource "aws_security_group_rule" "cp_portal_https" {
   security_group_id = aws_security_group.controlplane.id
 }
 
+# existing tenants: the rule gained a count, so its address changed — keep it in place
+moved {
+  from = aws_security_group_rule.cp_portal_https
+  to   = aws_security_group_rule.cp_portal_https[0]
+}
+
 resource "aws_security_group_rule" "cp_gateway_tcp" {
   type              = "ingress"
   description       = "DCV gateway TCP"

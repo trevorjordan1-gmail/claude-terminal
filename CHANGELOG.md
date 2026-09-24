@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-23 — desktops explicitly denied the portal's Entra secret and the Cloudflare tokens (#59, first half)
+
+Field finding from a client tenant (2026-09-17): **any terminal could read
+every tenant SecureString** — the portal's Entra client secret, the
+Cloudflare tokens, and the fleet-shared backup credential (so every other
+terminal's backups too). Root cause is not our Allow: the AWS-managed
+`AmazonSSMManagedInstanceCore` on the desktop role already grants
+`ssm:GetParameter*` on `*`, and the default SSM KMS key decrypts for any
+principal via SSM — the desktop's `ReadBackupConfig` / `kms:Decrypt`
+statements are redundant and removing them changes nothing. **Only an
+explicit Deny isolates a desktop.** Landed now, safe for a running fleet
+because no desktop script reads them: `asp-desktop-deny-secrets` denies
+`ssm:GetParameter/GetParameters/GetParameterHistory` on
+`/asp/portal/secrets` and `/asp/cloudflare/*`, and denies
+`ssm:GetParametersByPath` under `/asp` outright (path-authorized — a leaf
+Deny alone would not stop a recursive walk). `terraform apply` per tenant;
+verify from a terminal per `build-tenant.md` §11. **Not yet**: `/asp/backup/*`
+and `/asp/healthchecks/*`, which `backup-arm.sh` still reads at arm time —
+they join the Deny with the per-terminal backup provisioner
+(`backup-provision.py` on the control plane, per-machine S3 sub-user + restic
+password + escrow), which exists as a field-verified bundle the operator has
+to hand over; its harness cases have not been run yet and need a Docker box.
+`#57`'s `cp_portal_https` gained a `count`, so a `moved` block keeps existing
+tenants from recreating the 443 rule on the same apply.
+
 ## 2026-09-23 — `render-page`: one command to read a JavaScript-only web page in the box's Chrome; `uv venv` is the tool-venv standard (#60)
 
 Field report from a build box (2026-09-23): a vendor's developer portal is a
