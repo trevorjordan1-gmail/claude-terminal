@@ -49,6 +49,10 @@ COMMON=/usr/share/dcv-session-manager-broker/bin/common.sh
 sed -i -E "s/-Xmx[0-9]+[mgMG]/-Xmx$HEAP/" "$COMMON"
 sed -i -E 's/ -XX:\+UseSerialGC -XX:MaxMetaspaceSize=[0-9]+m -XX:ReservedCodeCacheSize=[0-9]+m -Xss[0-9]+k//' "$COMMON"
 [ -z "$JVM_EXTRA" ] || sed -i -E "s/-Xmx$HEAP/-Xmx$HEAP$JVM_EXTRA/" "$COMMON"
+# the stock line also carries -Xms512m AFTER -Xmx: an initial heap above the maximum and the
+# JVM refuses to start at all ("Initial heap size set to a larger value than the maximum heap
+# size") — found on the first solo control plane. Fleet keeps the stock -Xms.
+[ "${ASP_SOLO:-0}" = "1" ] && sed -i -E 's/-Xms[0-9]+[mgMG]/-Xms128m/' "$COMMON"
 
 for kv in \
   "client-to-broker-connector-https-port = 8446" \
