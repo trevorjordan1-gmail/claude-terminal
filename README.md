@@ -170,7 +170,8 @@ keeps its install, and a forgotten one removes itself. Tune with
 | 21-medical-claude-mem | *medical only:* claude-mem on Bedrock via the CLI's aliases; telemetry + cloud sync off; credential strip |
 | 25-superpowers | [superpowers](https://github.com/obra/superpowers) skills plugin |
 | 27-postlogin-finish | installs `cct-finish` + a `.bashrc` hook: the first shell after `claude` login finishes the plugin installs automatically (headless/cloud provisions never see the "re-run after login" reminder) |
-| 30-uv | uv/uvx (Chroma MCP server runs through it) |
+| 30-uv | uv/uvx (Chroma MCP server runs through it) — also **the kit's standard for tool venvs** (`uv venv ~/.venvs/<tool>`); `python3-venv` is deliberately not in the image |
+| 31-render-page | `render-page <url> [--click <text>]... [--json]` — reads a JavaScript-only page in the box's Chrome (Playwright, headless, own venv built on first use) and prints its text; `--json` lists the JSON/XHR calls the page made, which for a single-page app is usually its own content API and cleaner than the DOM |
 | 38-x11-session | forces X11 (Wayland off at GDM) — RustDesk/Splashtop can't inject input on Wayland (skipped on DCV terminals, where the host owns session config) |
 | 40-gnome-qol | screen lock off, idle blanking off; dock = Firefox, Files, Terminal (App Center and Help unpinned) — on DCV terminals the dock is host-managed (Chrome, dconf-locked) and left alone |
 | 41-splashtop-cursorfix | works around a Splashtop ≤3.8.0.0 crash: static cursors (host + snap themes), no Firefox launch spinner, LD_PRELOAD shim on the streamer (only runs where Splashtop is installed) |

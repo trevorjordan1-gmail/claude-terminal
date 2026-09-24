@@ -119,6 +119,11 @@ git diff --cached | grep -qE "$pat" && { echo "ABORT: live secret in staged diff
   there is no push; `list --unread` is the pull.
 - OS-level change on this terminal? Log it in `~/Projects/os-changes/README.md` (top row,
   with how to undo it).
+- **Researching a JavaScript-only site** (WebFetch/curl return a 1 KB shell)? Do not start a
+  scraping project: `render-page <url> --json` renders it in the box's Chrome and prints the
+  text plus every JSON/XHR call the page made. Look for the site's own content API in that
+  list FIRST — for a single-page app it is usually there, and it returns the whole page (and
+  any OpenAPI file) cleaner than the rendered DOM. `--click "<nav text>"` walks sections.
 
 ## Stack
 

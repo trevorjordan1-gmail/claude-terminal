@@ -210,6 +210,15 @@ product lives upstream on `main`. The loop (issue #1):
    identity (tfvars, `tenants.json`, backend, SSM config) stays in the
    operator's private overlay, never here.
 
+## Python tool venvs: `uv venv`, not `python3-venv`
+
+Decided with #60: a tool that needs its own Python environment on a terminal
+builds it with `uv venv ~/.venvs/<tool>` + `uv pip install --python …`
+(uv ships in the core, module 30). `python3-venv` is **not** added to the
+image — `python3 -m venv` failing on a box is expected, not a bug. Model:
+`tools/render-page.py`, which builds its venv on first run and re-execs
+itself inside it, so the installed launcher is just the file.
+
 ## Hard rules
 
 - **No secrets or machine identifiers, ever** — no hostnames, IPs, printer

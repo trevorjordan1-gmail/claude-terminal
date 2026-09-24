@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-23 — `render-page`: one command to read a JavaScript-only web page in the box's Chrome; `uv venv` is the tool-venv standard (#60)
+
+Field report from a build box (2026-09-23): a vendor's developer portal is a
+single-page app — WebFetch and curl get a 1 KB shell with a title — and
+Chrome 153 was on the box with nothing to drive it; `python3 -m venv` fails
+because `python3-venv` is not installed. Forty minutes later `uv venv` +
+Playwright + `chromium.launch(channel="chrome")` worked, and sniffing the
+network found the SPA's own JSON backend, which returned the whole page and
+the OpenAPI file directly — cleaner than the DOM. Shipped as
+`tools/render-page.py`, installed to `~/.local/bin/render-page` by new core
+module 31: renders the URL headless in the installed Chrome, `--click "<nav
+text>"` (repeatable) walks sections, prints the page text, and `--json` /
+`--json-bodies` lists (and dumps) every JSON/XHR response the page fetched.
+Self-contained — first run builds `~/.venvs/render-page` (uv, falling back to
+`python3 -m venv`) and installs Playwright there, then re-execs inside it; no
+system change. Verified on a build box: text of a static page, and on a
+public Swagger UI the click walked the nav and the network list surfaced the
+site's `swagger.json`. Decision recorded in `docs/DEVELOPMENT.md`: **`uv
+venv` is the standard for tool venvs, `python3-venv` stays out of the
+image.** The platform CLAUDE template gets the research line: for a SPA,
+look for the content API in the network log first.
+
 ## 2026-09-23 — admins can reach an idle terminal ("Connect as owner", audited); Join gates on readiness; removing a terminal leaves no ghost session (#58)
 
 Field report from a client tenant (2026-09-16). `/connect/{id}` has always
