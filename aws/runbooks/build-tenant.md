@@ -70,8 +70,18 @@ Tenant values never live in the repo: they go in a git-ignored `terraform/backen
 
 ## 3. Entra objects
 
-> Written for `az`; the build terminal has none. Supported path: the device-code Graph
-> provisioner (#39 — until it lands, the Entra portal by hand with these exact settings).
+> Written for `az`; the build terminal has none. **Supported path: one device-code sitting
+> does the registration, consent, secret AND the four groups** (#69, first used on the solo
+> test tenant 2026-09-25):
+>
+> ```bash
+> python3 templates/entra-sso/provision-terminals.py --code <code> --portal-host portal.<dns_zone> \
+>     --tenant <tenant-guid-or-domain> --admin <you@client> --user <desktop-owner@client> \
+>     --apply --out <0700 dir>        # omit --apply for a dry run; --out gets portal-config.json + portal-secrets.json (0600)
+> # then: aws ssm put-parameter /asp/portal/config ← portal-config.json (+ CLIENT_CODE, LAUNCH_TEMPLATE_ID, SUBNET_IDS)
+> #       aws ssm put-parameter /asp/portal/secrets ← portal-secrets.json (SecureString), shred the local copy
+> ```
+> The `az` commands below are what it does, kept for reference.
 > This is the **`<code>-terminals`** registration — separate from `<code>-sso` on purpose
 > (`account-foundations.md` §6.2). After it exists, run the Conditional Access MFA check
 > (§6.3 there) for its app ID.
