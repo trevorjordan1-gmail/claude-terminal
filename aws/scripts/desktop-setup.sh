@@ -35,7 +35,17 @@ prog_failed() {
 # permissions only apply to existing OS users (collab guests connect as them).
 for u in $(echo "${ASP_ALL_USERS:-$ASP_LOCAL_USER}" | tr ',' ' '); do
   if ! id -u "$u" &>/dev/null; then
-    adduser --disabled-password --gecos "ASP terminal user" "$u"
+    # A local name that collides with an existing GROUP (Ubuntu ships a legacy `admin`
+    # group, gid 110; `staff`, `users`, `games`… are others) makes adduser die with
+    # "The group `admin' already exists" — no user, the workbench step then fails as
+    # "claude missing" and the build is marked failed. Found on the first solo tenant,
+    # whose owner is admin@<tenant>. Adopt the group as primary instead; it carries no
+    # privilege on 24.04 (sudo is `sudo`, and our drop-in is per-user).
+    if getent group "$u" >/dev/null 2>&1; then
+      adduser --disabled-password --gecos "ASP terminal user" --ingroup "$u" "$u"
+    else
+      adduser --disabled-password --gecos "ASP terminal user" "$u"
+    fi
   fi
 done
 # Passwordless sudo for the owner (workbench + in-session installs). Use the
